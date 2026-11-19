@@ -50,6 +50,7 @@ type Log struct {
 	closeErr error
 
 	settings Settings
+	maxPages int64
 	stats    counters
 	dropped  atomic.Uint64
 	recent   [1440]atomic.Pointer[bucket]
@@ -112,7 +113,7 @@ func (l *Log) init(ctx context.Context) error {
 	// Reserve equal space for main pages and a WAL transaction, plus room for
 	// frame headers and the shared-memory index. Keep spill disabled so each
 	// changed page appears in the WAL at most once per transaction.
-	pages := (l.settings.MaxBytes - metadataReserve) * 45 / 100 / pageSize
+	pages := (l.settings.MaxBytes - metadataReserve) / pageSize * 45 / 100
 	_, err := l.writer.ExecContext(ctx, fmt.Sprintf(`
 		PRAGMA page_size = %d;
 		PRAGMA auto_vacuum = INCREMENTAL;
@@ -142,6 +143,7 @@ func (l *Log) init(ctx context.Context) error {
 	if effective != pages || actualPageSize != pageSize {
 		return errors.New("existing query history does not fit its configured page budget")
 	}
+	l.maxPages = effective
 	return l.flush(ctx, nil)
 }
 
@@ -185,7 +187,7 @@ func (l *Log) run() {
 	defer close(l.stopped)
 	tick := time.NewTicker(time.Second)
 	defer tick.Stop()
-	batch := make([]contract.Event, 0, min(batchSize, int(l.settings.MaxBytes/8192)))
+	batch := make([]contract.Event, 0, int(min(int64(batchSize), l.settings.MaxBytes/8192)))
 	write := func() {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 		defer cancel()
@@ -250,14 +252,7 @@ func (l *Log) flush(ctx context.Context, batch []contract.Event) error {
 	if _, err := tx.ExecContext(ctx, "DELETE FROM dns_queries WHERE time < ?", cutoff); err != nil {
 		return err
 	}
-	// Keep a row budget so SQLite can reuse free pages through steady-state
-	// writes. The page ceiling above enforces the physical limit.
-	rows := max(1, (l.settings.MaxBytes-metadataReserve)*30/100/850-int64(len(batch)))
-	if _, err := tx.ExecContext(ctx, `
-		DELETE FROM dns_queries WHERE id <= (
-			SELECT MAX(id) - ? FROM dns_queries
-		)
-	`, rows); err != nil {
+	if err := l.makeRoom(ctx, tx, len(batch)); err != nil {
 		return err
 	}
 	if len(batch) > 0 {
@@ -281,6 +276,34 @@ func (l *Log) flush(ctx context.Context, batch []contract.Event) error {
 		}
 	}
 	return tx.Commit()
+}
+
+// makeRoom evicts the oldest rows when actual page usage nears the SQLite
+// ceiling. A batch reserves enough space for its longest permitted entries,
+// index pages, and page splits.
+func (l *Log) makeRoom(ctx context.Context, tx *sql.Tx, batch int) error {
+	reserve := int64(4 + (batch*960+pageSize-1)/pageSize)
+	const usage = `SELECT page_count - freelist_count FROM pragma_page_count(), pragma_freelist_count()`
+	for range 8 {
+		var pages int64
+		if err := tx.QueryRowContext(ctx, usage).Scan(&pages); err != nil {
+			return err
+		}
+		if pages+reserve <= l.maxPages {
+			return nil
+		}
+		result, err := tx.ExecContext(ctx, `DELETE FROM dns_queries WHERE id IN (
+			SELECT id FROM dns_queries ORDER BY id LIMIT ?
+		)`, max(32, batch*4))
+		if err != nil {
+			return err
+		}
+		deleted, err := result.RowsAffected()
+		if err != nil || deleted == 0 {
+			return err
+		}
+	}
+	return nil
 }
 
 func (l *Log) client(e contract.Event) string {
