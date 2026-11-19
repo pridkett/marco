@@ -331,3 +331,30 @@ func TestNonAlignedReverseScopesAndAlternatePTRs(t *testing.T) {
 		}
 	}
 }
+
+func TestConfirmedNameCanReplaceLegacySeed(t *testing.T) {
+	state := config.State{
+		Desired: zones(), Devices: map[string]config.Device{
+			"legacy": {ID: "legacy", Legacy: true, LegacyOwner: "laptop.fixture.test.", Reported: "laptop.fixture.test.",
+				Addresses: []config.Address{{IP: netip.MustParseAddr("192.0.2.14"), Publish: true}}},
+		},
+	}
+	old, err := localdns.Compile(&state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertAnswer(t, old, "laptop.fixture.test.", dns.TypeA, dns.RcodeSuccess, 1, 0)
+	if err := inventory.Reconcile(&state, inventory.Snapshot{
+		Controller: "fixture", Site: "default", Complete: true, ObservedAt: time.Now(),
+		Observations: []inventory.Observation{{MAC: "02:aa:00:00:00:07", Reported: "laptop", Present: true,
+			UseObservationTime: true, Addresses: []netip.Addr{netip.MustParseAddr("192.0.2.14")}}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	view, err := localdns.Compile(&state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertAnswer(t, view, "laptop.fixture.test.", dns.TypeA, dns.RcodeSuccess, 1, 0)
+	assertAnswer(t, view, "laptop.home.arpa.", dns.TypeA, dns.RcodeSuccess, 1, 0)
+}

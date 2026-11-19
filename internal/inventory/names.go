@@ -91,6 +91,10 @@ func Prepare(state *config.State) error {
 	// Existing names take precedence during automatic renames and new allocations.
 	for _, id := range ids {
 		device := state.Devices[id]
+		if device.Legacy && device.LegacyOwner != "" && state.Desired.Devices[id].Name == "" {
+			device.Canonical = ""
+			state.Devices[id] = device
+		}
 		if device.Canonical == "" {
 			continue
 		}
@@ -123,6 +127,11 @@ func Prepare(state *config.State) error {
 	}
 	for _, id := range ids {
 		device := state.Devices[id]
+		if device.Legacy && device.LegacyOwner != "" && state.Desired.Devices[id].Name == "" {
+			// A seed row reserves its exact DNS owner, without claiming a
+			// device label across all publication suffixes.
+			continue
+		}
 		if state.Desired.Devices[id].Name != "" || (device.Canonical != "" && !state.Desired.AutoRename) {
 			continue
 		}

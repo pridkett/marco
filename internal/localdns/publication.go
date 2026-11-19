@@ -205,7 +205,11 @@ func compareIssue(a, b Issue) int {
 
 func learnedLabels(device config.Device) []string {
 	var labels []string
-	for _, name := range []string{device.Canonical, device.Reported, device.Hostname} {
+	seedLabel := ""
+	if device.Legacy && device.LegacyOwner != "" {
+		seedLabel = inventory.Label(device.LegacyOwner)
+	}
+	for _, name := range []string{device.Canonical, device.Reported, device.Hostname, seedLabel} {
 		if name, err := config.Name(name); err == nil {
 			labels = append(labels, name)
 		} else if label := inventory.Label(name); label != "" {
