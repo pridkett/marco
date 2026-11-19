@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "default": {"mode": "filtered", "pool": "resolver"},
+  "pools": {
+    "resolver": [
+      {
+        "transport": "dot",
+        "address": "192.0.2.53",
+        "serverName": "replace-with-profile.example"
+      }
+    ]
+  },
+  "subscriptions": {
+    "demo-local": {"file": "demo.txt", "enabled": true},
+    "example-https": {"url": "https://lists.example/deny.txt", "enabled": false}
+  },
+  "zones": [
+    {"name": "home.arpa.", "private": true, "publish": true}
+  ],
+  "reverse": ["192.168.0.0/16", "fd00::/8"],
+  "dynamicTTL": 60,
+  "staticTTL": 300,
+  "records": [
+    {"name": "welcome.home.arpa.", "type": "A", "value": "192.0.2.10"}
+  ]
+}

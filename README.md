@@ -1,0 +1,52 @@
+# Marco
+
+Marco is a LAN DNS forwarder and local name service. It serves UDP and TCP, applies client-specific filtering and DNS policies, and builds local records from manual settings and UniFi inventory. Verified DNS-over-TLS, DNS-over-HTTPS, and DNS-over-QUIC are available for upstream forwarding.
+
+Each instance runs as one Go binary with an embedded admin console and its own SQLite databases. The console supports an Argon2id password account and PocketID-compatible OIDC.
+
+## Build
+
+Use Go 1.25 or newer. Builds are CGO-free.
+
+```sh
+go test ./...
+go test -race ./...
+mkdir -p dist
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -o dist/marco-linux-amd64 ./cmd/marco
+CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -o dist/marco-linux-arm64 ./cmd/marco
+CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=7 go build -trimpath -o dist/marco-linux-armv7 ./cmd/marco
+```
+
+Use arm64 on 64-bit Raspberry Pi OS and ARMv7 on 32-bit Raspberry Pi OS. Run `scripts/package-linux.sh arm64` to create a distributable archive with the examples, docs, and bundled dependency notices. CI packages all three Linux architectures.
+
+## Start an instance
+
+Copy the two example JSON files and the bundled `lists/` directory into a private deployment directory. Relative paths resolve from the deployment file. Set `node`, choose `dns.listen` and `dns.allow`, and replace the example upstream address and TLS verification name in the desired configuration. The loopback settings are suitable for a first smoke test. Add the actual LAN bindings and IPv4/IPv6 client CIDRs for LAN service.
+
+Provision the local account and an HTTPS certificate for the admin URL. The following certificate is suitable for a local smoke test. Trust its certificate in your browser if testing the console. Use a certificate valid for your configured admin host in deployment.
+
+```sh
+umask 077
+marco password --out operator.hash
+openssl req -x509 -newkey rsa:2048 -nodes -days 30 -subj /CN=localhost \
+  -addext subjectAltName=DNS:localhost -keyout admin-key.pem -out admin-cert.pem
+marco validate --config marco.json
+marco run --config marco.json
+```
+
+Open the configured HTTPS admin URL or use `dig @127.0.0.1 -p 1053 welcome.home.arpa` when using the example binding. Omit the `admin` section for a DNS-only instance. On Linux, binding port 53 requires the appropriate service capability or socket permissions. Give the service user access to its data directory, certificate and configured secret files.
+
+The deployment file contains startup settings. Marco seeds its database from `initialConfig` when the data directory is new. Subsequent desired settings come from SQLite and can be changed in the console or imported offline.
+
+## Operate
+
+- Preserve client peer addresses through containers, VLAN routing and relays. An address-only policy is useful for an unobserved relay. Name a known device in a static reservation so the policy can yield to contradictory UniFi ownership. Unknown clients follow the longest matching subnet policy, then the filtered default.
+- Add private zones for internal-only suffixes and split zones for public suffixes with local overrides. Configure LAN reverse CIDRs explicitly. Set `public: true` on a local CNAME that intentionally targets external DNS.
+- Give each encrypted endpoint a fixed IP or a list of `bootstrap` IPs when possible. Keep the verification name and HTTPS URL for the actual provider. Set `upstream.bootstrapDNS` to an independent resolver address or opt into `upstream.systemBootstrap` after verifying that system DNS resolves the endpoint while Marco is stopped. Run `marco upstream-test --config marco.json --pool resolver:0` to opt into a live provider test.
+- Use matching fallback resolver profiles. For DoH, enter the full provider HTTPS URL. For DoT or DoQ, use `serverName` for the profile-specific TLS name. For fixed dial addresses, the TLS name and HTTP authority remain those of the provider.
+- Add subscriptions in `marco.desired.json` before first startup or in the Blocklists console for an existing instance. The example enables a bundled list and includes a disabled HTTPS template. Replace the template URL before enabling it. A file source uses a path relative to the deployment’s `listDirectory`, which can be mounted read-only. Marco stages each newly enabled list until a usable artifact arrives and retains the last successful artifact through failed refreshes.
+- The filtered default applies all enabled lists that have loaded. Set a group or device policy’s `subscriptions` to a list of source IDs to replace the inherited selection, or use `[]` to select zero. From the example binding, run `dig @127.0.0.1 -p 1053 ads.demo.test` after `demo-local` shows Active. The expected result is NXDOMAIN.
+- Use the console’s policy test to see source selection and matching rules. Query history defaults to seven days and 128 MiB. Set `history.enabled` to false for counters only. Set `history.anonymize` and provision `history.anonymizationKey` to pseudonymize client IPs in new history. Use a high-entropy key of at least 16 bytes.
+- Use `/livez` and `/readyz` on the admin port for process and DNS bind health. Review the authenticated Overview and Settings for dependency status.
+
+For UniFi and admin deployment details, migration, and backups, see [Operations](docs/operations.md). The [verification guide](docs/verification.md) covers fixtures and the opt-in resource workload. The expected behaviors and scope are in [SPEC.md](SPEC.md).

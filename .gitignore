@@ -1,0 +1,10 @@
+/dist/
+/data/
+/marco
+/marco.json
+/marco.desired.json
+*.db
+*.db-shm
+*.db-wal
+*.pem
+*.hash

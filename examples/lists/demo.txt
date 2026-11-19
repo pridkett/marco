@@ -1,0 +1,4 @@
+! Synthetic examples under the reserved .test suffix.
+||ads.demo.test^
+@@||allowed.ads.demo.test^
+0.0.0.0 telemetry.demo.test
