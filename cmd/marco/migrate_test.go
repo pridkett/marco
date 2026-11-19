@@ -79,8 +79,9 @@ func TestOfflineMigrationBackupAndRestore(t *testing.T) {
 		t.Fatalf("wanted a stale preview error, got %v", err)
 	}
 	exported := run("export", "--config", deployment)
-	if strings.Contains(exported, "legacy-") || strings.Contains(exported, "co-authored") {
-		t.Fatal("portable export includes instance state")
+	var desired config.Desired
+	if err := config.DecodeJSON(strings.NewReader(exported), &desired); err != nil || desired.Version != config.Version {
+		t.Fatalf("portable export is not desired configuration: %v", err)
 	}
 	inventory := run("export", "--config", deployment, "--inventory")
 	if !strings.Contains(inventory, `"legacyOwner": "laptop.split.test."`) {

@@ -2,6 +2,7 @@ package migrate
 
 import (
 	"fmt"
+	"maps"
 	"net/netip"
 	"reflect"
 	"slices"
@@ -288,10 +289,20 @@ func (p *importer) guardClient(loc string, c guardClient) {
 		return
 	}
 	policy := config.Policy{}
-	if c.UseGlobal == nil || !*c.UseGlobal {
-		if c.Filtering != nil && !*c.Filtering {
+	if (c.UseGlobal == nil || !*c.UseGlobal) && c.Filtering != nil {
+		if !*c.Filtering {
 			empty := []string{}
 			policy.Subscriptions = &empty
+		} else if p.Desired.Default.Subscriptions != nil {
+			// Re-enable the imported selection for clients that had their own
+			// filtering setting when AdGuard's global selection was disabled.
+			selected := make([]string, 0)
+			for _, id := range slices.Sorted(maps.Keys(p.Desired.Subscriptions)) {
+				if strings.HasPrefix(id, "adguard-filters-") || strings.HasPrefix(id, "adguard-whitelist_filters-") {
+					selected = append(selected, id)
+				}
+			}
+			policy.Subscriptions = &selected
 		}
 	}
 	if c.UseGlobalBlocks == nil || !*c.UseGlobalBlocks {
