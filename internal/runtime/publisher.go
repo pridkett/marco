@@ -96,9 +96,11 @@ func (p *Publisher) Update(ctx context.Context, base uint64, change func(*config
 	}
 	view.Revision = next.Revision
 	if err := p.store.Save(ctx, old.state, next); err != nil {
+		closeUpstream(view.Upstream, old.view.Upstream)
 		return old.state.Revision, err
 	}
 	p.live.Store(&snapshot{next, view})
+	closeUpstream(old.view.Upstream, view.Upstream)
 	return next.Revision, nil
 }
 
@@ -121,4 +123,19 @@ func clone(state config.State) (config.State, error) {
 	}
 	copy.Artifacts = artifacts
 	return copy, nil
+}
+
+// Close releases idle transport resources after the listeners and workers have stopped.
+func (p *Publisher) Close() { closeUpstream(p.View().Upstream, nil) }
+
+func closeUpstream(retired, active contract.Upstream) {
+	closer, ok := retired.(interface{ Close() })
+	if ok && !sameUpstream(retired, active) {
+		closer.Close()
+	}
+}
+
+func sameUpstream(left, right contract.Upstream) bool {
+	t := reflect.TypeOf(left)
+	return t != nil && t == reflect.TypeOf(right) && t.Comparable() && left == right
 }

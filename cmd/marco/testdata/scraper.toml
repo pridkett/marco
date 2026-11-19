@@ -1,0 +1,9 @@
+[processing]
+domains = ["split.test"]
+additional = [{ ip = "192.0.2.10", name = "server" }]
+blocked = [{ ip = "192.0.2.44", name = "power" }]
+cnames = [
+  { cname = "server-ui.split.test", hostname = "server-http.split.test" },
+  { cname = "server-http.split.test", hostname = "server.split.test" }
+]
+keep_macs = false

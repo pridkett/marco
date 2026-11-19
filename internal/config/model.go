@@ -150,6 +150,7 @@ type Artifact struct {
 }
 
 type State struct {
+	Imports   map[string]time.Time `json:"imports,omitempty"`
 	Revision  uint64               `json:"revision"`
 	Desired   Desired              `json:"desired"`
 	Devices   map[string]Device    `json:"devices,omitempty"`

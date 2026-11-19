@@ -1,0 +1,12 @@
+{
+  "addressRows": "observation",
+  "rowChoices": {"6": "manual"},
+  "retiredAliases": ["retired.split.test"],
+  "reverse": ["192.0.2.0/24", "fd00:abcd::/64"],
+  "services": {
+    "fixture-video": {
+      "version": "1",
+      "domains": [{"name": "video.fixture.test", "suffix": true}]
+    }
+  }
+}

@@ -32,7 +32,7 @@ func Open(ctx context.Context, directory string, initial config.Desired) (*Store
 	if err := os.MkdirAll(directory, 0700); err != nil {
 		return nil, err
 	}
-	path, err := filepath.Abs(filepath.Join(directory, "marco.db"))
+	path, err := filepath.Abs(filepath.Join(directory, StateFile))
 	if err != nil {
 		return nil, err
 	}
@@ -227,7 +227,7 @@ func (s *Store) Save(ctx context.Context, previous, next config.State) error {
 
 // Inspect reads a consistent state without creating or migrating an instance.
 func Inspect(ctx context.Context, directory string) (config.State, error) {
-	path, err := filepath.Abs(filepath.Join(directory, "marco.db"))
+	path, err := filepath.Abs(filepath.Join(directory, StateFile))
 	if err != nil {
 		return config.State{}, err
 	}

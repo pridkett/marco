@@ -1,0 +1,26 @@
+filters:
+  - {id: 1, enabled: true, url: "https://lists.example/deny.txt"}
+  - {id: 2, enabled: false, url: "https://lists.example/disabled.txt"}
+whitelist_filters:
+  - {id: 1, enabled: true, url: "https://lists.example/allow.txt"}
+user_rules:
+  - "||analytics.test^"
+  - "@@||needed.analytics.test^"
+  - "||rewrite.test^$dnsrewrite=192.0.2.11"
+filtering:
+  filtering_enabled: true
+  blocked_services:
+    ids: []
+clients:
+  persistent:
+    - name: Children
+      ids: ["192.0.2.31", "fd00:abcd::/64", "00:aa:bb:cc:dd:ee"]
+      use_global_settings: false
+      filtering_enabled: true
+      use_global_blocked_services: false
+      blocked_services:
+        ids: ["fixture-video"]
+    - name: Gateway relay
+      ids: ["192.0.2.1"]
+      use_global_settings: false
+      filtering_enabled: false
