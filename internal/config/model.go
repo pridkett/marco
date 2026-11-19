@@ -56,10 +56,11 @@ type Zone struct {
 }
 
 type Record struct {
-	Name  string `json:"name"`
-	Type  string `json:"type"`
-	Value string `json:"value"`
-	TTL   uint32 `json:"ttl,omitempty"`
+	Name   string `json:"name"`
+	Type   string `json:"type"`
+	Value  string `json:"value"`
+	TTL    uint32 `json:"ttl,omitempty"`
+	Public bool   `json:"public,omitempty"`
 }
 
 type Suppression struct {
@@ -115,25 +116,27 @@ type Address struct {
 	Active     bool       `json:"active,omitempty"`
 	Publish    bool       `json:"publish,omitempty"`
 	Superseded bool       `json:"superseded,omitempty"`
+	Reassigned bool       `json:"reassigned,omitempty"`
 	Conflicted bool       `json:"conflicted,omitempty"`
 }
 
 type Device struct {
-	ID         string    `json:"id"`
-	Controller string    `json:"controller,omitempty"`
-	Site       string    `json:"site,omitempty"`
-	MAC        string    `json:"mac,omitempty"`
-	SourceID   string    `json:"sourceID,omitempty"`
-	Canonical  string    `json:"canonical,omitempty"`
-	Reported   string    `json:"reported,omitempty"`
-	Hostname   string    `json:"hostname,omitempty"`
-	Network    string    `json:"network,omitempty"`
-	FirstSeen  time.Time `json:"firstSeen,omitempty"`
-	LastSeen   time.Time `json:"lastSeen,omitempty"`
-	LastPoll   time.Time `json:"lastPoll,omitempty"`
-	Connected  bool      `json:"connected,omitempty"`
-	Legacy     bool      `json:"legacy,omitempty"`
-	Addresses  []Address `json:"addresses,omitempty"`
+	ID          string    `json:"id"`
+	Controller  string    `json:"controller,omitempty"`
+	Site        string    `json:"site,omitempty"`
+	MAC         string    `json:"mac,omitempty"`
+	SourceID    string    `json:"sourceID,omitempty"`
+	Canonical   string    `json:"canonical,omitempty"`
+	Reported    string    `json:"reported,omitempty"`
+	Hostname    string    `json:"hostname,omitempty"`
+	Network     string    `json:"network,omitempty"`
+	FirstSeen   time.Time `json:"firstSeen,omitempty"`
+	LastSeen    time.Time `json:"lastSeen,omitempty"`
+	LastPoll    time.Time `json:"lastPoll,omitempty"`
+	Connected   bool      `json:"connected,omitempty"`
+	Legacy      bool      `json:"legacy,omitempty"`
+	LegacyOwner string    `json:"legacyOwner,omitempty"`
+	Addresses   []Address `json:"addresses,omitempty"`
 }
 
 type Artifact struct {
