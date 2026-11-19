@@ -171,13 +171,14 @@ func (s *Store) Save(ctx context.Context, previous, next config.State) error {
 	if next.Revision != previous.Revision+1 {
 		return errors.New("invalid revision increment")
 	}
+	audit, _ := ctx.Value(auditKey{}).(*ChangeAudit)
 	state := next
 	state.Artifacts = nil
 	data, err := json.Marshal(state)
 	if err != nil {
 		return err
 	}
-	return s.Write(ctx, func(tx *sql.Tx) error {
+	err = s.Write(ctx, func(tx *sql.Tx) error {
 		result, err := tx.ExecContext(ctx, "UPDATE dns_state SET revision=?, data=? WHERE id=1 AND revision=?", next.Revision, data, previous.Revision)
 		if err != nil {
 			return err
@@ -200,7 +201,6 @@ func (s *Store) Save(ctx context.Context, previous, next config.State) error {
 			body := artifact.Body
 			artifact.Body = nil
 			if old, ok := previous.Artifacts[source]; ok {
-				old.Body = nil
 				if old.Source == artifact.Source && old.Digest == artifact.Digest &&
 					old.ETag == artifact.ETag && old.LastModified == artifact.LastModified &&
 					old.FetchedAt.Equal(artifact.FetchedAt) && old.RuleCount == artifact.RuleCount {
@@ -221,8 +221,15 @@ func (s *Store) Save(ctx context.Context, previous, next config.State) error {
 				return err
 			}
 		}
+		if audit != nil {
+			return WriteAudit(ctx, tx, audit.account, audit.operation, "success", next.Revision)
+		}
 		return nil
 	})
+	if err == nil && audit != nil {
+		audit.saved.Store(true)
+	}
+	return err
 }
 
 // Inspect reads a consistent state without creating or migrating an instance.

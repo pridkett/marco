@@ -239,6 +239,17 @@ func openAuth(ctx context.Context, db *store.Store, s config.AdminSettings) (*au
 		settings.Issuer, settings.ClientID, settings.ClientSecret, settings.AdminGroup = s.Issuer, s.ClientID, secret, s.AdminGroup
 	}
 	manager, err := auth.New(ctx, db, settings)
+	if err != nil && settings.Username != "" && settings.Issuer != "" {
+		localOnly := settings
+		localOnly.Issuer, localOnly.ClientID, localOnly.ClientSecret, localOnly.AdminGroup = "", "", "", ""
+		if localManager, localInitErr := auth.New(ctx, db, localOnly); localInitErr == nil {
+			return localManager, fmt.Errorf("OIDC unavailable: %w", err)
+		}
+		settings.Username, settings.PasswordHash = "", ""
+		if oidcManager, oidcInitErr := auth.New(ctx, db, settings); oidcInitErr == nil {
+			return oidcManager, fmt.Errorf("local sign-in unavailable: %w", err)
+		}
+	}
 	return manager, errors.Join(localErr, oidcErr, err)
 }
 

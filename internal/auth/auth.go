@@ -17,6 +17,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/pridkett/marco/internal/store"
 )
 
 const (
@@ -315,10 +317,7 @@ func (m *Manager) Logout(w http.ResponseWriter, r *http.Request, session Session
 
 func (m *Manager) Audit(ctx context.Context, account, operation, result string, revision uint64) error {
 	return m.store.Write(ctx, func(tx *sql.Tx) error {
-		_, err := tx.ExecContext(ctx, `
-			INSERT INTO admin_audit(time, account, operation, result, revision) VALUES (?, ?, ?, ?, ?)
-		`, time.Now().Unix(), account, operation, result, revision)
-		return err
+		return store.WriteAudit(ctx, tx, account, operation, result, revision)
 	})
 }
 

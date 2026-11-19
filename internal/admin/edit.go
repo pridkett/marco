@@ -16,6 +16,7 @@ import (
 	"github.com/pridkett/marco/internal/auth"
 	"github.com/pridkett/marco/internal/config"
 	"github.com/pridkett/marco/internal/contract"
+	"github.com/pridkett/marco/internal/store"
 )
 
 type localSettings struct {
@@ -77,6 +78,7 @@ func (s *server) edit(w http.ResponseWriter, r *http.Request, session auth.Sessi
 	base, err := strconv.ParseUint(form.Get("revision"), 10, 64)
 	status := http.StatusBadRequest
 	current := s.revision()
+	var audit *store.ChangeAudit
 	if err != nil || base == 0 {
 		err = errors.New("A valid base revision is required.")
 	} else if base != current {
@@ -89,8 +91,13 @@ func (s *server) edit(w http.ResponseWriter, r *http.Request, session auth.Sessi
 		var change func(*config.State) error
 		change, err = changeFor(operation, form.Get)
 		if err == nil {
-			current, err = s.hooks.Update(r.Context(), base, change)
-			if err != nil && current != base {
+			ctx, changeAudit := store.WithChangeAudit(r.Context(), session.Account, operation)
+			audit = changeAudit
+			current, err = s.hooks.Update(ctx, base, change)
+			switch {
+			case errors.Is(err, store.ErrBusy):
+				status, err = http.StatusServiceUnavailable, errors.New("Marco is busy. Try the edit again.")
+			case err != nil && (errors.Is(err, store.ErrStale) || current != base):
 				status, err = http.StatusConflict, conflict(base, current)
 			}
 		}
@@ -108,7 +115,7 @@ func (s *server) edit(w http.ResponseWriter, r *http.Request, session auth.Sessi
 		s.page(w, r, session, path, status, draft)
 		return
 	}
-	if !s.audit(r, session.Account, operation, "success", current) {
+	if !audit.Saved() && !s.audit(r, session.Account, operation, "success", current) {
 		draft = feedback{Error: "The change applied, but its audit record could not be saved."}
 		s.page(w, r, session, path, http.StatusOK, draft)
 		return
