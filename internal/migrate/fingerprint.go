@@ -9,13 +9,12 @@ import (
 )
 
 // Fingerprint identifies an import by file contents and operator dispositions.
-func Fingerprint(options Options, allowUnsupported bool) (string, error) {
+func Fingerprint(options Options) (string, error) {
 	h := sha256.New()
 	data, err := json.Marshal(struct {
 		Disposition Disposition
 		Replace     bool
-		Skip        bool
-	}{options.Disposition, options.ReplaceDesired, allowUnsupported})
+	}{options.Disposition, options.ReplaceDesired})
 	if err != nil {
 		return "", err
 	}

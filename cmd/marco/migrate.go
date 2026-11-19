@@ -56,13 +56,13 @@ func migrateCommand(ctx context.Context, args []string, out io.Writer) error {
 	if *apply && *base != candidate.Revision {
 		return fmt.Errorf("%w: current revision is %d", store.ErrStale, candidate.Revision)
 	}
-	identity, err := migrate.Fingerprint(options, *skip)
+	identity, err := migrate.Fingerprint(options)
 	if err != nil {
 		return err
 	}
 	var report migrate.Report
 	if _, exists := candidate.Imports[identity]; exists {
-		report = migrate.Report{Base: candidate.Revision, Warnings: []migrate.Item{
+		report = migrate.Report{Base: candidate.Revision, Staged: migrate.Staged(&candidate), Warnings: []migrate.Item{
 			{Source: "migration", Detail: "this input and disposition were already applied; kept current settings"},
 		}}
 		if *apply {
@@ -95,6 +95,9 @@ func migrateCommand(ctx context.Context, args []string, out io.Writer) error {
 			return err
 		}
 		return errors.New("review unsupported items before applying; supply compatible data or explicitly accept them")
+	}
+	if after, err := migrate.Fingerprint(options); err != nil || after != identity {
+		return errors.New("migration inputs changed during inspection; create a fresh preview")
 	}
 	initial, err := readState(ctx, d)
 	if err != nil {

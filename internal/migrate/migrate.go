@@ -68,13 +68,19 @@ func Build(state *config.State, options Options) (Report, error) {
 	if err := p.importAll(); err != nil {
 		return p.report, err
 	}
+	p.report.Staged = Staged(state)
+	return p.report, nil
+}
+
+func Staged(state *config.State) []string {
+	var names []string
 	for name, spec := range state.Desired.Subscriptions {
 		if spec.Enabled && (state.Artifacts[name].Digest == "" || state.Artifacts[name].Source != spec) {
-			p.report.Staged = append(p.report.Staged, name)
+			names = append(names, name)
 		}
 	}
-	slices.Sort(p.report.Staged)
-	return p.report, nil
+	slices.Sort(names)
+	return names
 }
 
 func (p *importer) importAll() error {

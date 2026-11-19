@@ -215,19 +215,29 @@ func (d Deployment) Validate() error {
 	}
 	bindings := map[string]bool{}
 	for _, addr := range d.DNS.Listen {
-		if _, err := splitListen(addr); err != nil {
+		host, err := splitListen(addr)
+		if err != nil {
 			return fmt.Errorf("dns.listen: %w", err)
 		}
 		if bindings[addr] {
 			return errors.New("duplicate DNS listen address")
 		}
 		bindings[addr] = true
+		bootstrap := d.Upstream.BootstrapDNS
+		if bootstrap.IsValid() {
+			_, port, _ := net.SplitHostPort(addr)
+			if port == strconv.Itoa(int(bootstrap.Port())) &&
+				(host.Unmap() == bootstrap.Addr().Unmap() ||
+					bootstrap.Addr().IsLoopback() && (!host.IsValid() || host.IsUnspecified())) {
+				return errors.New("bootstrap DNS cannot use a local Marco listener")
+			}
+		}
 	}
 	if d.Upstream.SystemBootstrap && d.Upstream.BootstrapDNS.IsValid() {
 		return errors.New("choose either a bootstrap DNS address or independent system bootstrap")
 	}
-	if d.Upstream.BootstrapDNS.IsValid() && d.Upstream.BootstrapDNS.Port() == 0 {
-		return errors.New("bootstrap DNS requires a nonzero port")
+	if b := d.Upstream.BootstrapDNS; b.IsValid() && (b.Port() == 0 || b.Addr().IsUnspecified() || b.Addr().IsMulticast()) {
+		return errors.New("bootstrap DNS requires a unicast IP and nonzero port")
 	}
 	if d.Upstream.MaxConnections < 1 || d.Upstream.MaxConnections > 512 || d.Upstream.CacheEntries < 0 || d.Upstream.CacheEntries > 100000 {
 		return errors.New("upstream.maxConnections must be 1–512 and upstream.cacheEntries must be 0–100000")
@@ -239,7 +249,7 @@ func (d Deployment) Validate() error {
 		}
 		public, err := url.Parse(d.Admin.PublicURL)
 		if err != nil || public.Scheme != "https" || public.Hostname() == "" ||
-			public.User != nil || public.RawQuery != "" || public.Fragment != "" || public.Path != "" && public.Path != "/" {
+			public.User != nil || public.Opaque != "" || public.ForceQuery || public.RawQuery != "" || public.Fragment != "" || public.Path != "" && public.Path != "/" {
 			return errors.New("admin.publicURL must be an HTTPS origin")
 		}
 		if d.Admin.KeyFile == "" || d.Admin.CertFile == "" {
