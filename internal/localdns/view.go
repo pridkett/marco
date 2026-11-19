@@ -205,11 +205,8 @@ func (v *View) negativeSOA(name, fallback string) *dns.SOA {
 }
 
 func (v *View) publicTarget(name string, explicit bool) bool {
-	if v.owners[name] != nil || v.hidden[name] || v.empty[name] ||
-		v.privateZone(name) != nil || v.reverseZone(name) != "" {
-		return false
-	}
-	return explicit || (parentName(name) != "" && v.configuredZone(name) == nil)
+	return explicit && v.owners[name] == nil && !v.hidden[name] && !v.empty[name] &&
+		v.privateZone(name) == nil && v.reverseZone(name) == ""
 }
 
 func (v *View) validateAliases() error {
@@ -280,7 +277,12 @@ func (v *View) Lookup(name string, qtype uint16) contract.LocalResult {
 				return result
 			}
 			if rrset := entry.sets[qtype]; len(rrset) != 0 {
-				result.Answer = append(result.Answer, rrset...)
+				if len(result.Answer) == 0 {
+					// Callers treat the compiled records and slices as read-only.
+					result.Answer = rrset
+				} else {
+					result.Answer = append(result.Answer, rrset...)
+				}
 				return result
 			}
 			if link := entry.sets[dns.TypeCNAME]; len(link) != 0 {

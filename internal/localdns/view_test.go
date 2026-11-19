@@ -46,6 +46,7 @@ func TestSplitPrivateAndReverseAnswers(t *testing.T) {
 		{Name: "first.fixture.test", Type: "CNAME", Value: "second.fixture.test"},
 		{Name: "second.fixture.test", Type: "CNAME", Value: "host.fixture.test"},
 		{Name: "absent.fixture.test", Type: "CNAME", Value: "missing.fixture.test"},
+		{Name: "absolute.fixture.test", Type: "CNAME", Value: "missing.other.test"},
 		{Name: "external.fixture.test", Type: "CNAME", Value: "public.fixture.test", Public: true},
 		{Name: "leak.fixture.test", Type: "CNAME", Value: "missing.home.arpa", Public: true},
 		{Name: "nested.branch.home.arpa", Type: "A", Value: "192.0.2.51"},
@@ -89,7 +90,11 @@ func TestSplitPrivateAndReverseAnswers(t *testing.T) {
 	if got.PublicTarget != "" {
 		t.Fatalf("unresolved local alias was marked for forwarding: %+v", got)
 	}
-	if len(view.Issues()) != 2 {
+	got = assertAnswer(t, view, "absolute.fixture.test.", dns.TypeA, dns.RcodeNameError, 1, 1)
+	if got.PublicTarget != "" {
+		t.Fatalf("an absolute target was forwarded without an explicit public setting: %+v", got)
+	}
+	if len(view.Issues()) != 3 {
 		t.Fatalf("unresolved alias warnings: %+v", view.Issues())
 	}
 	got = assertAnswer(t, view, "external.fixture.test.", dns.TypeA, dns.RcodeSuccess, 1, 0)
@@ -282,4 +287,47 @@ func TestLegacySeedStaysExactUntilOwnershipConfirmed(t *testing.T) {
 	}
 	// Compiled data remains intact when a later candidate is applied.
 	assertAnswer(t, old, "legacy.fixture.test.", dns.TypeA, dns.RcodeSuccess, 1, 0)
+}
+
+func TestNonAlignedReverseScopesAndAlternatePTRs(t *testing.T) {
+	desired := zones()
+	desired.Reverse = []netip.Prefix{
+		netip.MustParsePrefix("192.0.2.128/25"),
+		netip.MustParsePrefix("2001:db8:fa:1:8000::/65"),
+	}
+	desired.Devices = map[string]config.DeviceSettings{"fixed": {
+		Name: "Fixed Device",
+		Pinned: []netip.Addr{
+			netip.MustParseAddr("192.0.2.130"),
+			netip.MustParseAddr("2001:db8:fa:1:8000::10"),
+		},
+	}}
+	for _, multiple := range []bool{false, true} {
+		desired.MultiplePTRs = multiple
+		view, err := localdns.Compile(&config.State{Desired: desired})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, ip := range []string{"192.0.2.130", "2001:db8:fa:1:8000::10"} {
+			reverse, _ := dns.ReverseAddr(ip)
+			count := 1
+			if multiple {
+				count = 2
+			}
+			got := assertAnswer(t, view, reverse, dns.TypePTR, dns.RcodeSuccess, count, 0)
+			if primary := got.Answer[0].(*dns.PTR).Ptr; primary != "fixed-device.fixture.test." {
+				t.Fatalf("unexpected primary PTR %s", primary)
+			}
+		}
+		for _, ip := range []string{"192.0.2.131", "2001:db8:fa:1:8000::11"} {
+			reverse, _ := dns.ReverseAddr(ip)
+			assertAnswer(t, view, reverse, dns.TypePTR, dns.RcodeNameError, 0, 1)
+		}
+		for _, ip := range []string{"192.0.2.40", "2001:db8:fa:1:4000::11"} {
+			reverse, _ := dns.ReverseAddr(ip)
+			if view.Lookup(reverse, dns.TypePTR).Found {
+				t.Fatalf("reverse authority escaped its CIDR at %s", reverse)
+			}
+		}
+	}
 }
