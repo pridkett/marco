@@ -111,7 +111,14 @@ input::placeholder { color: var(--muted); opacity: 1; }
 summary { cursor: pointer; font-weight: 650; }
 
 .table-box { max-width: 100%; overflow: auto; margin-bottom: 1rem; }
+.mobile-table-note { display: none; }
 table { width: 100%; border-collapse: collapse; font-size: .88rem; text-align: start; }
+.devices-table { min-width: 53rem; }
+.devices-table th:nth-child(1) { min-width: 10rem; }
+.devices-table th:nth-child(2), .devices-table th:nth-child(4) { min-width: 8rem; }
+.records-table { min-width: 32rem; }
+.subscriptions-table { min-width: 48rem; }
+.history-table { min-width: 58rem; }
 th, td { text-align: start; vertical-align: top; padding: .63rem .78rem; border-bottom: 1px solid var(--border); }
 th { font-weight: 625; }
 thead th { background: var(--faint); white-space: nowrap; }
@@ -130,5 +137,7 @@ tr:last-child > td, tr:last-child > th { border-bottom: 0; }
   .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .65rem; }
   .section { padding: .95rem; }
   .toolbar > label { flex: 1 1 8rem; }
+  .mobile-table-note { display: block; font-size: .82rem; margin-bottom: .45rem; }
+  input:not([type="hidden"]), select, textarea { font-size: 1rem; }
   th, td { padding: .55rem .6rem; }
 }

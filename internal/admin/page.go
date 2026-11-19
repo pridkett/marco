@@ -186,8 +186,10 @@ func sourceRows(state config.State) []sourceRow {
 		switch {
 		case !spec.Enabled:
 			rows = append(rows, sourceRow{id, spec, "Disabled", info})
-		case !loaded || info.Source.URL != spec.URL || info.Source.File != spec.File || info.Source.Allowlist != spec.Allowlist:
+		case !loaded:
 			rows = append(rows, sourceRow{id, spec, "Waiting for valid list", info})
+		case info.Source != spec:
+			rows = append(rows, sourceRow{id, spec, "Retaining last good list", info})
 		default:
 			rows = append(rows, sourceRow{id, spec, "Active", info})
 		}

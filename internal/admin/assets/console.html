@@ -98,6 +98,7 @@
     <h2>DNS service</h2>
     <dl class="facts">
       <div><dt>Readiness</dt><dd>{{if .Ready}}Ready{{else}}Starting{{end}}</dd></div>
+      <div><dt>Cache hit rate</dt><dd>{{.Counts.CacheHitRate}}</dd></div>
       <div><dt>Upstream failures</dt><dd>{{.Counts.Errors}}</dd></div>
       <div><dt>Query history</dt><dd>{{if .Stats.Enabled}}Enabled{{else}}Disabled{{end}}</dd></div>
       {{if .Stats.Enabled}}<div><dt>Dropped history entries</dt><dd>{{.Stats.Dropped}}</dd></div>{{end}}
@@ -127,7 +128,7 @@
 {{define "devices"}}
 <div class="toolbar spread">
   <form action="/devices" method="get" class="toolbar">
-    <label>Search devices <input name="search" type="search" value="{{.DeviceSearch}}" placeholder="Name, address, network…"></label>
+    <label>Search devices <input name="search" type="search" value="{{.DeviceSearch}}" placeholder="Name or IP"></label>
     <label>Presence
       <select name="presence">
         <option value="">All devices</option>
@@ -147,8 +148,9 @@
     </form>
   </div>
 </div>
-<div class="panel table-box" role="region" aria-label="Devices table" tabindex="0">
-  <table>
+<p class="mobile-table-note muted" id="device-scroll-help">Scroll the table to see more columns.</p>
+<div class="panel table-box" role="region" aria-label="Devices table" aria-describedby="device-scroll-help" tabindex="0">
+  <table class="devices-table">
     <thead><tr><th scope="col">Device</th><th scope="col">Addresses</th><th scope="col">Network</th><th scope="col">Policy</th><th scope="col">Last seen</th><th scope="col">Controller poll</th><th scope="col">Publication</th></tr></thead>
     <tbody>
     {{range .Devices}}
@@ -211,7 +213,7 @@
   </section>
 </div>
 <div class="panel table-box" role="region" aria-label="Manual DNS records" tabindex="0">
-  <table>
+  <table class="records-table">
     <thead><tr><th scope="col">Owner</th><th scope="col">Type</th><th scope="col">Value</th><th scope="col">Alias status</th></tr></thead>
     <tbody>{{range .Desired.Records}}<tr><th scope="row">{{.Name}}</th><td>{{.Type}}</td><td>{{.Value}}</td><td>{{label (index $.AliasStatus .Name)}}</td></tr>
       {{else}}<tr><td colspan="4" class="empty">No manual DNS records.</td></tr>{{end}}</tbody>
@@ -257,7 +259,7 @@
 
 {{define "blocklists"}}
 <div class="panel table-box" role="region" aria-label="Blocklist subscriptions" tabindex="0">
-  <table>
+  <table class="subscriptions-table">
     <thead><tr><th scope="col">Subscription</th><th scope="col">Status</th><th scope="col">Last usable refresh</th><th scope="col">Rules</th><th scope="col">Digest</th><th scope="col">Actions</th></tr></thead>
     <tbody>
     {{range .Subscriptions}}
@@ -333,8 +335,9 @@
     <label>Until (UTC) <input name="until" type="datetime-local" value="{{.HistoryUntil}}"></label>
     <button type="submit" class="button">Filter queries</button>
   </form>
-  <div class="panel table-box" role="region" aria-label="Query history" tabindex="0">
-    <table>
+  <p class="mobile-table-note muted" id="history-scroll-help">Scroll the table to see more columns.</p>
+  <div class="panel table-box" role="region" aria-label="Query history" aria-describedby="history-scroll-help" tabindex="0">
+    <table class="history-table">
       <thead><tr><th scope="col">Time (UTC)</th><th scope="col">Node</th><th scope="col">Client</th><th scope="col">Question</th><th scope="col">Type</th><th scope="col">Outcome</th><th scope="col">Rule</th><th scope="col">Cache</th><th scope="col">Latency</th></tr></thead>
       <tbody>{{range .History.Entries}}<tr><td class="time">{{when .Time}}</td><td>{{label .Node}}</td><td>{{label .Client}}</td><th scope="row">{{label .Name}}</th><td>{{.TypeLabel}}</td><td>{{.RCodeLabel}} · {{.Origin}}<span class="secondary">{{.Reason}}</span></td><td>{{label .Rule}}</td><td>{{label .Cache}}</td><td>{{.Latency}}</td></tr>
         {{else}}<tr><td colspan="9" class="empty">No queries match these filters.</td></tr>{{end}}</tbody>

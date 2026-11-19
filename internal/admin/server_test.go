@@ -235,7 +235,7 @@ func TestRoutesReadyAuthAndRenderedViews(t *testing.T) {
 		t.Run(tc.path, func(t *testing.T) {
 			resp := request(f.handler, "GET", tc.path, nil, f.cookie)
 			checkContent(t, resp, tc.want...)
-			if resp.Header().Get("Cache-Control") != "no-store" || !strings.Contains(resp.Header().Get("Content-Security-Policy"), "frame-ancestors 'none'") {
+			if resp.Header().Get("Cache-Control") != "no-store" || resp.Header().Get("Referrer-Policy") != "same-origin" || !strings.Contains(resp.Header().Get("Content-Security-Policy"), "frame-ancestors 'none'") {
 				t.Fatal("page missing security headers")
 			}
 		})

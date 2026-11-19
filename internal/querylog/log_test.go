@@ -34,7 +34,7 @@ func TestDisabledStillCounts(t *testing.T) {
 	l.Observe(logEvent(time.Now(), "filtered.test."))
 	stats := l.Stats()
 	if stats.Enabled || stats.Total.Queries != 1 || stats.Total.Blocks != 1 || stats.Total.Cache != 1 ||
-		stats.Recent["15 minutes"].Queries != 1 || stats.Dropped != 0 {
+		stats.Recent["15 minutes"].Queries != 1 || stats.Total.CacheHitRate() != "100.0%" || stats.Dropped != 0 {
 		t.Fatalf("unexpected counts: %+v", stats)
 	}
 	if page, err := l.Search(t.Context(), Filter{}); err != nil || len(page.Entries) > 0 {

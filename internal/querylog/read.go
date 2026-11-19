@@ -15,6 +15,7 @@ type Counts struct {
 	Queries uint64
 	Local   uint64
 	Cache   uint64
+	Misses  uint64
 	Blocks  uint64
 	Errors  uint64
 }
@@ -23,6 +24,7 @@ type counters struct {
 	queries atomic.Uint64
 	local   atomic.Uint64
 	cache   atomic.Uint64
+	misses  atomic.Uint64
 	blocks  atomic.Uint64
 	errors  atomic.Uint64
 }
@@ -40,6 +42,9 @@ func (c *counters) observe(event contract.Event) {
 	if event.Cache == "hit" && event.Origin != "cache" {
 		c.cache.Add(1)
 	}
+	if event.Cache == "miss" {
+		c.misses.Add(1)
+	}
 	if event.RCode == dns.RcodeServerFailure {
 		c.errors.Add(1)
 	}
@@ -48,7 +53,7 @@ func (c *counters) observe(event contract.Event) {
 func (c *counters) read() Counts {
 	return Counts{
 		Queries: c.queries.Load(), Local: c.local.Load(), Cache: c.cache.Load(),
-		Blocks: c.blocks.Load(), Errors: c.errors.Load(),
+		Blocks: c.blocks.Load(), Errors: c.errors.Load(), Misses: c.misses.Load(),
 	}
 }
 
@@ -56,8 +61,16 @@ func (c *Counts) add(other Counts) {
 	c.Queries += other.Queries
 	c.Local += other.Local
 	c.Cache += other.Cache
+	c.Misses += other.Misses
 	c.Blocks += other.Blocks
 	c.Errors += other.Errors
+}
+
+func (c Counts) CacheHitRate() string {
+	if c.Cache+c.Misses == 0 {
+		return "—"
+	}
+	return strconv.FormatFloat(float64(c.Cache)*100/float64(c.Cache+c.Misses), 'f', 1, 64) + "%"
 }
 
 type bucket struct {
