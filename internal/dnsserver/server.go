@@ -128,7 +128,10 @@ func (s *Server) activate(protocol *dns.Server) <-chan error {
 }
 
 func (s *Server) Address() string { return s.address }
-func (s *Server) Ready() bool     { return s.running.Load() == 2 && s.handler.options.View() != nil }
+
+func (s *Server) Ready() bool {
+	return s.running.Load() == 2 && s.handler.ctx.Err() == nil && s.handler.options.View() != nil
+}
 
 func (s *Server) Shutdown(ctx context.Context) error {
 	s.cancel()
@@ -166,7 +169,7 @@ func (h *handler) ServeDNS(w dns.ResponseWriter, request *dns.Msg) {
 			response = outcome(dns.RcodeRefused, "server", "unsupported-operation")
 		case request.Opcode != dns.OpcodeQuery:
 			response = outcome(dns.RcodeNotImplemented, "server", "unsupported-operation")
-		case request.IsTsig() != nil:
+		case request.IsTsig() != nil || in.Type == dns.TypeTSIG || in.Type == dns.TypeTKEY:
 			response = outcome(dns.RcodeNotImplemented, "server", "unsupported-tsig")
 		case len(request.Question) != 1 || in.Type == 0 || request.Zero || len(request.Answer) != 0 || len(request.Ns) != 0 || invalidExtra:
 			response = outcome(dns.RcodeFormatError, "server", "malformed-query")
