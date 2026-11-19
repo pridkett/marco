@@ -152,8 +152,12 @@ func (f *Fetcher) Fetch(ctx context.Context, source config.Subscription, previou
 			return artifact, fmt.Errorf("invalid subscription request")
 		}
 		if previous.Source == source && previous.Digest != "" {
-			request.Header.Set("If-None-Match", previous.ETag)
-			request.Header.Set("If-Modified-Since", previous.LastModified)
+			if previous.ETag != "" {
+				request.Header.Set("If-None-Match", previous.ETag)
+			}
+			if previous.LastModified != "" {
+				request.Header.Set("If-Modified-Since", previous.LastModified)
+			}
 		}
 		response, err := f.client.Do(request)
 		if err != nil {
@@ -183,12 +187,10 @@ func (f *Fetcher) Fetch(ctx context.Context, source config.Subscription, previou
 	if ctx.Err() != nil {
 		return artifact, ctx.Err()
 	}
-	_, count, err := Parse(body, source.Allowlist, source.AllowEmpty)
-	if err != nil {
-		return artifact, err
+	if len(body) > MaxBytes {
+		return artifact, fmt.Errorf("subscription exceeds %d expanded bytes", MaxBytes)
 	}
 	artifact.Body = body
 	artifact.Digest = fmt.Sprintf("%x", sha256.Sum256(body))
-	artifact.RuleCount = count
 	return artifact, nil
 }

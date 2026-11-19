@@ -36,9 +36,11 @@ type binding struct {
 }
 
 type feed struct {
-	digest    string
-	allowlist bool
-	index     filter.Index
+	digest     string
+	allowlist  bool
+	allowEmpty bool
+	count      int
+	index      filter.Index
 }
 
 type Engine struct {
@@ -152,17 +154,20 @@ func Compile(state *config.State, previous *Engine) (*Engine, error) {
 		if previous != nil {
 			old = previous.feeds[name]
 		}
-		if old.digest != artifact.Digest || old.allowlist != artifact.Source.Allowlist || old.index == nil {
-			index, _, err := filter.Parse(artifact.Body, artifact.Source.Allowlist, artifact.Source.AllowEmpty)
+		if old.digest != artifact.Digest || old.allowlist != artifact.Source.Allowlist ||
+			old.allowEmpty != artifact.Source.AllowEmpty || old.index == nil {
+			index, count, err := filter.Parse(artifact.Body, artifact.Source.Allowlist, artifact.Source.AllowEmpty)
 			if err != nil {
 				return nil, fmt.Errorf("subscription %q: %w", name, err)
 			}
-			old = feed{artifact.Digest, artifact.Source.Allowlist, index}
+			old = feed{artifact.Digest, artifact.Source.Allowlist, artifact.Source.AllowEmpty, count, index}
 		}
 		indexRules += len(old.index)
 		if indexRules > filter.MaxIndexRules {
 			return nil, fmt.Errorf("subscription indexes exceed the total budget of %d domains", filter.MaxIndexRules)
 		}
+		artifact.RuleCount = old.count
+		state.Artifacts[name] = artifact
 		e.feeds[name] = old
 		e.defaultFeeds = append(e.defaultFeeds, name)
 	}
@@ -347,10 +352,14 @@ func (e *Engine) External(s contract.Selection, name string, _ time.Time) contra
 			best, source = match, id
 		}
 	}
-	if best.Found && !best.Allow {
-		return contract.Decision{Blocked: true, Reason: "subscription-block", Rule: source + "/" + best.Name}
+	if !best.Found {
+		return contract.Decision{}
 	}
-	return contract.Decision{}
+	reference := source + "/" + best.Name
+	if best.Allow {
+		return contract.Decision{Allowed: true, Reason: "subscription-allow", Rule: reference}
+	}
+	return contract.Decision{Blocked: true, Reason: "subscription-block", Rule: reference}
 }
 
 func Validate(c config.Desired) error {

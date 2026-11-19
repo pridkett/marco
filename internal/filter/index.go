@@ -60,15 +60,19 @@ func (i Index) Add(rule config.Rule) error {
 	if err != nil {
 		return err
 	}
+	i.add(name, rule.Suffix, rule.Allow)
+	return nil
+}
+
+func (i Index) add(name string, suffix, allow bool) {
 	var kind Bits = exactDeny
-	if rule.Allow {
+	if allow {
 		kind <<= 1
 	}
-	if rule.Suffix {
+	if suffix {
 		kind <<= 2
 	}
 	i[name] |= kind
-	return nil
 }
 
 func (i Index) Match(name string, allowTie bool) Match {
@@ -136,7 +140,7 @@ func Parse(body []byte, allowlist, allowEmpty bool) (Index, int, error) {
 							problems = append(problems, fmt.Sprintf("line %d: invalid hosts owner", lineNo))
 						}
 					} else {
-						_ = index.Add(config.Rule{Name: rule.Name, Allow: allowlist})
+						index.add(rule.Name, false, allowlist)
 						count++
 					}
 				}
@@ -154,8 +158,7 @@ func Parse(body []byte, allowlist, allowEmpty bool) (Index, int, error) {
 			}
 			continue
 		}
-		rule.Allow = rule.Allow || allowlist
-		_ = index.Add(rule)
+		index.add(rule.Name, rule.Suffix, rule.Allow || allowlist)
 		count++
 		if count > MaxRules {
 			return nil, 0, fmt.Errorf("subscription exceeds %d usable rules", MaxRules)

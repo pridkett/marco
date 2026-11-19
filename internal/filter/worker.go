@@ -101,6 +101,13 @@ func (w *Worker) Run(ctx context.Context) {
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
 	for ctx.Err() == nil {
+		select {
+		case id := <-w.requests:
+			w.requested(ctx, id)
+			continue
+		default:
+		}
+
 		state := w.db.Snapshot()
 		w.mu.Lock()
 		for id := range w.attempts {
@@ -109,22 +116,35 @@ func (w *Worker) Run(ctx context.Context) {
 			}
 		}
 		w.mu.Unlock()
-		for _, id := range slices.Sorted(maps.Keys(state.Desired.Subscriptions)) {
-			s := state.Desired.Subscriptions[id]
-			if s.Enabled && !time.Now().Before(w.next(id, s, state.Artifacts[id])) {
-				w.refresh(ctx, id, s)
-			}
+		if id := w.due(state); id != "" {
+			w.refresh(ctx, id, state.Desired.Subscriptions[id])
+			continue
 		}
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
 		case id := <-w.requests:
-			if source := w.db.Snapshot().Desired.Subscriptions[id]; source.Enabled {
-				w.refresh(ctx, id, source)
-			}
+			w.requested(ctx, id)
 		}
 	}
+}
+
+func (w *Worker) requested(ctx context.Context, id string) {
+	if source := w.db.Snapshot().Desired.Subscriptions[id]; source.Enabled {
+		w.refresh(ctx, id, source)
+	}
+}
+
+func (w *Worker) due(state config.State) string {
+	now := time.Now()
+	for _, id := range slices.Sorted(maps.Keys(state.Desired.Subscriptions)) {
+		source := state.Desired.Subscriptions[id]
+		if source.Enabled && !now.Before(w.next(id, source, state.Artifacts[id])) {
+			return id
+		}
+	}
+	return ""
 }
 
 func stagger(id string, window time.Duration) time.Duration {

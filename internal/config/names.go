@@ -11,11 +11,12 @@ func Name(value string) (string, error) {
 	if name == "" || len(name) > 253 {
 		return "", fmt.Errorf("invalid DNS name %q", value)
 	}
-	for _, label := range strings.Split(name, ".") {
+	for label := range strings.SplitSeq(name, ".") {
 		if len(label) == 0 || len(label) > 63 || label[0] == '-' || label[len(label)-1] == '-' {
 			return "", fmt.Errorf("invalid DNS name %q", value)
 		}
-		for _, b := range []byte(label) {
+		for i := range len(label) {
+			b := label[i]
 			if !(b >= 'a' && b <= 'z' || b >= '0' && b <= '9' || b == '-' || b == '_') {
 				return "", fmt.Errorf("invalid DNS name %q", value)
 			}
