@@ -12,9 +12,10 @@ import (
 	"github.com/pridkett/marco/internal/config"
 	"github.com/pridkett/marco/internal/contract"
 	"github.com/pridkett/marco/internal/filter"
+	"github.com/pridkett/marco/internal/inventory"
 )
 
-const SourceMaxAge = 5 * time.Minute
+const SourceMaxAge = inventory.SourceMaxAge
 
 type manual struct {
 	index filter.Index
@@ -47,6 +48,7 @@ type Engine struct {
 	devices       map[string]config.DeviceSettings
 	linked        map[string]string
 	bindings      map[netip.Addr][]binding
+	reassigned    map[netip.Addr]map[string]bool
 	static        map[netip.Addr]config.Assignment
 	subnets       []config.Assignment
 	assignments   map[string]manual
@@ -63,7 +65,7 @@ func Compile(state *config.State, previous *Engine) (*Engine, error) {
 		defaultPolicy: c.Default,
 		groups:        c.Groups,
 		devices:       c.Devices,
-		linked:        make(map[string]string),
+		reassigned:    make(map[netip.Addr]map[string]bool),
 		bindings:      make(map[netip.Addr][]binding),
 		static:        make(map[netip.Addr]config.Assignment),
 		assignments:   make(map[string]manual),
@@ -82,17 +84,15 @@ func Compile(state *config.State, previous *Engine) (*Engine, error) {
 			return nil, err
 		}
 	}
+	e.linked, err = inventory.LinkTargets(state)
+	if err != nil {
+		return nil, err
+	}
 	for _, id := range slices.Sorted(maps.Keys(c.Devices)) {
 		device := c.Devices[id]
 		e.deviceRules[id], err = compileManual("device/"+id, device.Policy.Rules)
 		if err != nil {
 			return nil, err
-		}
-		for _, linked := range device.Links {
-			if other, ok := e.linked[linked]; ok && other != id {
-				return nil, fmt.Errorf("device %q linked to several policy identities", linked)
-			}
-			e.linked[linked] = id
 		}
 	}
 	for _, a := range c.Assignments {
@@ -109,18 +109,22 @@ func Compile(state *config.State, previous *Engine) (*Engine, error) {
 	}
 	slices.SortFunc(e.subnets, func(a, b config.Assignment) int { return b.Prefix.Bits() - a.Prefix.Bits() })
 	for id, device := range state.Devices {
-		if !device.Connected || device.Legacy || device.LastPoll.IsZero() {
-			continue
-		}
 		for _, addr := range device.Addresses {
-			if !addr.Active || addr.Superseded || addr.LastSeen.IsZero() {
+			ip := addr.IP.Unmap()
+			if addr.Reassigned {
+				if e.reassigned[ip] == nil {
+					e.reassigned[ip] = make(map[string]bool)
+				}
+				e.reassigned[ip][e.identity(id)] = true
+			}
+			if !device.Connected || device.Legacy || device.LastPoll.IsZero() ||
+				!addr.Active || addr.Superseded || addr.LastSeen.IsZero() {
 				continue
 			}
 			at := addr.LastSeen
 			if device.LastPoll.Before(at) {
 				at = device.LastPoll
 			}
-			ip := addr.IP.Unmap()
 			e.bindings[ip] = append(e.bindings[ip], binding{id: id, at: at, valid: at.Add(SourceMaxAge), conflicted: addr.Conflicted})
 		}
 	}
@@ -212,18 +216,32 @@ func (e *Engine) Select(ip netip.Addr, now time.Time) contract.Selection {
 		if b.valid.Before(now) || b.at.After(now) {
 			continue
 		}
-		if b.conflicted || (current.id != "" && current.id != b.id) {
+		if b.conflicted {
 			conflict = true
 		}
-		current = b
+		if current.id == "" {
+			current = b
+		} else if !e.sameIdentity(current.id, b.id) {
+			conflict = true
+		} else if current.id != b.id {
+			if b.at.After(current.at) {
+				current = b
+			}
+			current.id = e.identity(b.id)
+		}
 	}
 	if current.id != "" && !conflict {
 		if id, d, ok := e.managedDevice(current.id); ok {
 			return e.selection(id, d.Group, d.Policy, config.Assignment{}, "device", "observed", current.at)
 		}
 	}
-	if a, ok := e.static[ip]; ok && !conflict && (current.id == "" || a.Device != "" && e.sameIdentity(a.Device, current.id)) {
-		return e.fromAssignment(a, "static")
+	if a, ok := e.static[ip]; ok && !conflict {
+		if current.id == "" && !e.reassigned[ip][e.identity(a.Device)] {
+			return e.fromAssignment(a, "static")
+		}
+		if current.id != "" && a.Device != "" && e.sameIdentity(a.Device, current.id) {
+			return withObservation(e.fromAssignment(a, "static"), current, false)
+		}
 	}
 	for _, a := range e.subnets {
 		if a.Prefix.Contains(ip) {
@@ -239,19 +257,22 @@ func withObservation(s contract.Selection, b binding, conflict bool) contract.Se
 	if conflict {
 		s.Confidence = "conflicting"
 	} else if b.id != "" {
-		s.Device, s.Confidence, s.Seen = b.id, "observed", b.at
+		if s.Device == "" {
+			s.Device = b.id
+		}
+		s.Confidence, s.Seen = "observed", b.at
 	}
 	return s
 }
 
-func (e *Engine) sameIdentity(a, b string) bool {
-	if a == b {
-		return true
+func (e *Engine) identity(id string) string {
+	if root := e.linked[id]; root != "" {
+		return root
 	}
-	aID, _, _ := e.managedDevice(a)
-	bID, _, _ := e.managedDevice(b)
-	return aID == bID
+	return id
 }
+
+func (e *Engine) sameIdentity(a, b string) bool { return e.identity(a) == e.identity(b) }
 
 func (e *Engine) fromAssignment(a config.Assignment, precedence string) contract.Selection {
 	id, d, _ := e.managedDevice(a.Device)
@@ -395,6 +416,9 @@ func Validate(c config.Desired) error {
 		if err := check("assignment "+a.Prefix.String(), a.Policy); err != nil {
 			return err
 		}
+	}
+	if len(c.Subscriptions) > 128 {
+		return fmt.Errorf("configure at most 128 subscriptions")
 	}
 	for id, source := range c.Subscriptions {
 		if strings.TrimSpace(id) == "" {
