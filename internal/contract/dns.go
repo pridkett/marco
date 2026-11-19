@@ -42,6 +42,7 @@ type Selection struct {
 	Group      string
 	Confidence string
 	Precedence string
+	Assignment string
 	Seen       time.Time
 	Policy     config.Policy
 }
