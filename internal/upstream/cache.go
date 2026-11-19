@@ -95,13 +95,8 @@ func (c *responseCache) prepare(message *dns.Msg, now time.Time) *cacheEntry {
 	msg.Id = 0
 	msg.Compress = true
 
-	isNegative, owner := negativeOwner(msg)
-	if isNegative {
-		soa := negativeSOA(msg, owner)
-		if soa == nil {
-			return nil
-		}
-		soa.Hdr.Ttl = min(soa.Hdr.Ttl, soa.Minttl)
+	if !clampNegativeTTL(msg) {
+		return nil
 	}
 
 	ttl := c.ceiling
@@ -128,6 +123,24 @@ func (c *responseCache) prepare(message *dns.Msg, now time.Time) *cacheEntry {
 		return nil
 	}
 	return &cacheEntry{wire: wire, stored: now, expires: now.Add(time.Duration(ttl) * time.Second)}
+}
+
+// clampNegativeTTL returns false for uncachable negative responses which lack
+// a relevant SOA. The SOA is aged as an RR, leaving its MINIMUM field intact.
+func clampNegativeTTL(msg *dns.Msg) bool {
+	if len(msg.Question) != 1 {
+		return false
+	}
+	isNegative, owner := negativeOwner(msg)
+	if !isNegative {
+		return true
+	}
+	soa := negativeSOA(msg, owner)
+	if soa == nil {
+		return false
+	}
+	soa.Hdr.Ttl = min(soa.Hdr.Ttl, soa.Minttl)
+	return true
 }
 
 // Only an answer for the queried type at a reachable owner is positive. A

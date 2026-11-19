@@ -270,6 +270,7 @@ func (e *endpoint) exchangeHTTPS(ctx context.Context, query *dns.Msg) (*dns.Msg,
 		if err != nil {
 			return nil, errors.New("invalid DoH HTTP Age")
 		}
+		clampNegativeTTL(reply)
 		ageRecords(reply, uint32(min(seconds, uint64(^uint32(0)))))
 	}
 	return reply, nil

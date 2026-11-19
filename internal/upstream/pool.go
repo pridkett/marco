@@ -87,12 +87,18 @@ func New(configured map[string][]config.Endpoint, options Options) (*Pools, erro
 		p.names = append(p.names, name)
 	}
 	sort.Strings(p.names)
+	endpointCount := 0
 	for _, name := range p.names {
 		if name == "" || len(configured[name]) == 0 {
 			p.Close()
 			return nil, errors.New("upstream pool requires a name and at least one endpoint")
 		}
 		for i, item := range configured[name] {
+			if endpointCount == 128 {
+				p.Close()
+				return nil, errors.New("configured upstream endpoints exceed the limit of 128")
+			}
+			endpointCount++
 			ep, err := newEndpoint(name, i, item, options, idle)
 			if err != nil {
 				p.Close()
@@ -136,7 +142,7 @@ func (p *Pools) Test(ctx context.Context, pool string, index int) error {
 	if err != nil {
 		return errors.New(errorClass(err))
 	}
-	return err
+	return nil
 }
 
 func (p *Pools) Exchange(ctx context.Context, pool string, request *dns.Msg) (*dns.Msg, bool, error) {
@@ -240,6 +246,7 @@ func (p *Pools) try(ctx context.Context, ep *endpoint, query *dns.Msg) (*dns.Msg
 	if err != nil {
 		return nil, err
 	}
+	clampNegativeTTL(reply)
 	sanitizeReply(reply)
 	return reply, nil
 }
