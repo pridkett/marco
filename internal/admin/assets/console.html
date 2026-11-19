@@ -1,0 +1,387 @@
+{{define "head"}}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{.}} | Marco</title>
+  <link rel="stylesheet" href="/assets/admin.css">
+</head>
+{{end}}
+
+{{define "login"}}
+{{template "head" "Sign in"}}
+<body class="signin">
+<main class="panel signin-card">
+  <p class="brand"><span class="brand-mark" aria-hidden="true">M</span> Marco</p>
+  <h1>Sign in</h1>
+  {{with .Error}}<p class="message error" role="alert">{{.}}</p>{{end}}
+  {{if .OIDC}}
+  <form action="/login" method="post">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <input type="hidden" name="method" value="oidc">
+    <button type="submit" class="button primary full">Sign in with your identity provider</button>
+  </form>
+  {{end}}
+  {{if and .OIDC .Local}}<hr>{{end}}
+  {{if .Local}}
+  <form action="/login" method="post" class="stack">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <input type="hidden" name="method" value="local">
+    <label>Local username <input name="username" autocomplete="username" maxlength="256" required></label>
+    <label>Password <input name="password" type="password" autocomplete="current-password" maxlength="1024" required></label>
+    <button type="submit" class="button {{if not .OIDC}}primary{{end}} full">Sign in locally</button>
+  </form>
+  {{end}}
+</main>
+</body>
+</html>
+{{end}}
+
+{{define "main"}}
+{{template "head" .Title}}
+<body>
+<a href="#content" class="skip-link">Skip to content</a>
+<header class="masthead">
+  <div class="shell masthead-row">
+    <a href="/" class="brand" aria-label="Marco overview"><span class="brand-mark" aria-hidden="true">M</span> Marco</a>
+    <form action="/logout" method="post" class="account">
+      <span class="account-name" title="{{.Account}}">{{.Account}}</span>
+      <input type="hidden" name="csrf" value="{{.CSRF}}">
+      <button type="submit" class="button">Sign out</button>
+    </form>
+  </div>
+  <nav class="shell navigation" aria-label="Main navigation">
+    {{range .Nav}}<a href="{{.URL}}" {{if or (eq $.Path .URL) (and (eq $.Path "/devices/edit") (eq .URL "/devices"))}}aria-current="page"{{end}}>{{.Label}}</a>{{end}}
+  </nav>
+</header>
+<main id="content" class="shell main-content" tabindex="-1">
+  <div class="page-title">
+    <h1>{{.Title}}</h1>
+    <span class="muted">Revision {{.Revision}}</span>
+  </div>
+  {{with .Feedback.Error}}<p class="message error" role="alert">{{.}}</p>{{end}}
+  {{with .Feedback.Message}}<p class="message success" role="status">{{.}}</p>{{end}}
+  {{if ne .Revision .EditRevision}}<p><a href="{{.Path}}{{if .DeviceID}}?id={{urlquery .DeviceID}}{{end}}">Reload current settings</a></p>{{end}}
+  {{if eq .Path "/"}}{{template "overview" .}}{{end}}
+  {{if eq .Path "/devices"}}{{template "devices" .}}{{end}}
+  {{if eq .Path "/devices/edit"}}{{template "device-edit" .}}{{end}}
+  {{if eq .Path "/local-dns"}}{{template "local" .}}{{end}}
+  {{if eq .Path "/policies"}}{{template "policies" .}}{{end}}
+  {{if eq .Path "/blocklists"}}{{template "blocklists" .}}{{end}}
+  {{if eq .Path "/query-log"}}{{template "history" .}}{{end}}
+  {{if eq .Path "/settings"}}{{template "settings" .}}{{end}}
+</main>
+</body>
+</html>
+{{end}}
+
+{{define "overview"}}
+<form action="/" method="get" class="toolbar">
+  <label>Recent activity
+    <select name="range">
+      <option {{if eq .Range "15 minutes"}}selected{{end}}>15 minutes</option>
+      <option {{if eq .Range "1 hour"}}selected{{end}}>1 hour</option>
+      <option {{if eq .Range "24 hours"}}selected{{end}}>24 hours</option>
+    </select>
+  </label>
+  <button class="button" type="submit">Update range</button>
+</form>
+<dl class="metrics" aria-label="Recent DNS activity">
+  <div class="panel metric"><dt>Queries</dt><dd>{{.Counts.Queries}}</dd></div>
+  <div class="panel metric"><dt>Local hits</dt><dd>{{.Counts.Local}}</dd></div>
+  <div class="panel metric"><dt>Cache hits</dt><dd>{{.Counts.Cache}}</dd></div>
+  <div class="panel metric"><dt>Policy blocks</dt><dd>{{.Counts.Blocks}}</dd></div>
+</dl>
+<div class="panel-grid">
+  <section class="panel section">
+    <h2>DNS service</h2>
+    <dl class="facts">
+      <div><dt>Readiness</dt><dd>{{if .Ready}}Ready{{else}}Starting{{end}}</dd></div>
+      <div><dt>Upstream failures</dt><dd>{{.Counts.Errors}}</dd></div>
+      <div><dt>Query history</dt><dd>{{if .Stats.Enabled}}Enabled{{else}}Disabled{{end}}</dd></div>
+      {{if .Stats.Enabled}}<div><dt>Dropped history entries</dt><dd>{{.Stats.Dropped}}</dd></div>{{end}}
+    </dl>
+    {{with .Stats.Error}}<p class="message error">{{.}}</p>{{end}}
+  </section>
+  <section class="panel section">
+    <h2>UniFi sync</h2>
+    {{if .PollStatus}}
+    <dl class="facts">{{range .PollStatus}}<div><dt>{{.Title}}</dt><dd><span title="{{when .Updated}}">{{age .Updated}}</span></dd></div>{{end}}</dl>
+    {{else}}<p class="muted">No completed site polls.</p>{{end}}
+    <a href="/devices">Open devices</a>
+  </section>
+  <section class="panel section">
+    <h2>Blocklist refreshes</h2>
+    {{if .Subscriptions}}
+    <dl class="facts">{{range .Subscriptions}}<div><dt>{{.ID}}</dt><dd>{{.State}}{{if not .Info.FetchedAt.IsZero}} · <span title="{{when .Info.FetchedAt}}">{{age .Info.FetchedAt}}</span>{{end}}</dd></div>{{end}}</dl>
+    {{else}}<p class="muted">No subscriptions configured.</p>{{end}}
+    <a href="/blocklists">Open blocklists</a>
+  </section>
+</div>
+{{with .Status}}
+<section class="panel section"><h2>Integration health</h2><pre class="output">{{pretty .}}</pre></section>
+{{end}}
+{{end}}
+
+{{define "devices"}}
+<div class="toolbar spread">
+  <form action="/devices" method="get" class="toolbar">
+    <label>Search devices <input name="search" type="search" value="{{.DeviceSearch}}" placeholder="Name, address, network…"></label>
+    <label>Presence
+      <select name="presence">
+        <option value="">All devices</option>
+        <option {{if eq .DeviceFilter "Connected at last poll"}}selected{{end}}>Connected at last poll</option>
+        <option {{if eq .DeviceFilter "Absent at last poll"}}selected{{end}}>Absent at last poll</option>
+        <option {{if eq .DeviceFilter "Manual"}}selected{{end}}>Manual</option>
+        <option {{if eq .DeviceFilter "Legacy observation"}}selected{{end}}>Legacy observation</option>
+      </select>
+    </label>
+    <button class="button" type="submit">Filter</button>
+  </form>
+  <div class="toolbar">
+    <a class="button" href="/devices/edit?new=1">Add manual device</a>
+    <form action="/devices/poll" method="post">
+      <input type="hidden" name="csrf" value="{{.CSRF}}">
+      <button type="submit" class="button primary">Poll UniFi</button>
+    </form>
+  </div>
+</div>
+<div class="panel table-box" role="region" aria-label="Devices table" tabindex="0">
+  <table>
+    <thead><tr><th scope="col">Device</th><th scope="col">Addresses</th><th scope="col">Network</th><th scope="col">Policy</th><th scope="col">Last seen</th><th scope="col">Controller poll</th><th scope="col">Publication</th></tr></thead>
+    <tbody>
+    {{range .Devices}}
+      <tr>
+        <th scope="row">
+          <a href="/devices/edit?id={{urlquery .ID}}">{{if .Canonical}}{{.Canonical}}{{else}}{{.ID}}{{end}}</a>
+          {{with .Reported}}<span class="secondary">{{.}}</span>{{end}}
+          {{with .MAC}}<span class="secondary">{{.}}</span>{{end}}
+        </th>
+        <td>{{range .Addresses}}<span class="address">{{.IP}} <small>{{.Status}}</small></span>{{else}}—{{end}}</td>
+        <td>{{label .Network}}</td>
+        <td>{{label .Mode}}{{with .PolicyFrom}} <span class="secondary">{{.}}</span>{{end}}{{with .Assigned.Group}}<span class="secondary">Assigned to {{.}}</span>{{end}}</td>
+        <td>{{age .LastSeen}}{{if not .LastSeen.IsZero}}<span class="secondary time">{{when .LastSeen}}</span>{{end}}</td>
+        <td>{{.Presence}}{{if not .LastPoll.IsZero}}<span class="secondary time" title="{{when .LastPoll}}">{{age .LastPoll}}</span>{{end}}</td>
+        <td>{{.Published}}</td>
+      </tr>
+    {{else}}<tr><td colspan="7" class="empty">No devices match these filters.</td></tr>{{end}}
+    </tbody>
+  </table>
+</div>
+{{template "local-issues" .}}
+{{end}}
+
+{{define "local-issues"}}
+{{with .LocalIssues}}
+<details class="panel section"><summary>Publication conflicts and warnings</summary><pre class="output">{{pretty .}}</pre></details>
+{{end}}
+{{end}}
+
+{{define "device-edit"}}
+<section class="panel section narrow">
+  <p><a href="/devices">Back to devices</a></p>
+  {{if or .NewDevice .DeviceID}}
+  <form class="stack" method="post" action="/devices/edit">
+    {{template "revision-fields" .}}
+    {{if .NewDevice}}
+    <input type="hidden" name="create" value="1">
+    <label>Device ID <input name="id" value="{{.DeviceID}}" maxlength="256" required></label>
+    {{else}}
+    <p class="muted">Device ID <strong>{{.DeviceID}}</strong></p>
+    <input type="hidden" name="id" value="{{.DeviceID}}">
+    {{end}}
+    <label>Device settings <textarea name="settings" rows="12" spellcheck="false" required aria-describedby="device-help">{{.EditText}}</textarea></label>
+    <p id="device-help" class="muted">Set <code>name</code>, <code>group</code>, <code>unpublish</code>, <code>aliases</code>, <code>pinned</code> addresses, interface <code>links</code> or <code>policy</code> overrides. Omit inherited policy fields. Use an empty array to replace a group’s service or subscription selection.</p>
+    <button type="submit" class="button primary">Save device</button>
+  </form>
+  {{end}}
+</section>
+{{end}}
+
+{{define "local"}}
+<div class="panel-grid">
+  <section class="panel section">
+    <h2>Zones</h2>
+    <dl class="facts">{{range .Desired.Zones}}<div><dt>{{.Name}}</dt><dd>{{if .Private}}Private{{else}}Split{{end}}{{if .Publish}} · Publishes devices{{end}}</dd></div>{{else}}<p class="muted">No forward zones configured.</p>{{end}}</dl>
+  </section>
+  <section class="panel section">
+    <h2>Reverse ranges</h2>
+    {{if .Desired.Reverse}}<ul>{{range .Desired.Reverse}}<li>{{.}}</li>{{end}}</ul>{{else}}<p class="muted">No reverse ranges configured.</p>{{end}}
+  </section>
+</div>
+<div class="panel table-box" role="region" aria-label="Manual DNS records" tabindex="0">
+  <table>
+    <thead><tr><th scope="col">Owner</th><th scope="col">Type</th><th scope="col">Value</th><th scope="col">Alias status</th></tr></thead>
+    <tbody>{{range .Desired.Records}}<tr><th scope="row">{{.Name}}</th><td>{{.Type}}</td><td>{{.Value}}</td><td>{{label (index $.AliasStatus .Name)}}</td></tr>
+      {{else}}<tr><td colspan="4" class="empty">No manual DNS records.</td></tr>{{end}}</tbody>
+  </table>
+</div>
+{{template "local-issues" .}}
+<section class="panel section">
+  <h2>Local DNS settings</h2>
+  <p id="local-help" class="muted">Manage zones, manual records, aliases and publication suppressions in one change. A suppression with both a name and an address matches only that pair.</p>
+  <form action="/local-dns" method="post" class="stack">
+    {{template "revision-fields" .}}
+    <label>Local DNS JSON <textarea name="settings" rows="16" spellcheck="false" required aria-describedby="local-help">{{.EditText}}</textarea></label>
+    <button type="submit" class="button primary">Save local DNS</button>
+  </form>
+</section>
+{{end}}
+
+{{define "policies"}}
+<div class="panel-grid">
+  <section class="panel section">
+    <h2>Client groups</h2>
+    <dl class="facts">
+      <div><dt>Default</dt><dd>{{.Desired.Default.Mode}}</dd></div>
+      {{range $name, $group := .Desired.Groups}}<div><dt>{{$name}}</dt><dd>{{if $group.Mode}}{{$group.Mode}}{{else}}Inherited{{end}}</dd></div>{{end}}
+    </dl>
+  </section>
+  <section class="panel section">
+    <h2>Blocked services</h2>
+    <dl class="facts">{{range $id, $service := .Desired.Services}}<div><dt>{{$id}}</dt><dd>{{$service.Version}} · {{len $service.Domains}} rules</dd></div>{{else}}<p class="muted">No service groups configured.</p>{{end}}</dl>
+  </section>
+</div>
+{{template "probe" .}}
+<section class="panel section">
+  <h2>Policy settings</h2>
+  <p id="policies-help" class="muted">Manage default and group policies, address assignments, manual rules and versioned service groups. Modes are <code>filtered</code>, <code>unfiltered</code>, <code>local-only</code> and <code>deny-all</code>.</p>
+  <form action="/policies" method="post" class="stack">
+    {{template "revision-fields" .}}
+    <label>Policy JSON <textarea name="settings" rows="16" spellcheck="false" required aria-describedby="policies-help">{{.EditText}}</textarea></label>
+    <button type="submit" class="button primary">Save policies</button>
+  </form>
+</section>
+{{end}}
+
+{{define "blocklists"}}
+<div class="panel table-box" role="region" aria-label="Blocklist subscriptions" tabindex="0">
+  <table>
+    <thead><tr><th scope="col">Subscription</th><th scope="col">Status</th><th scope="col">Last usable refresh</th><th scope="col">Rules</th><th scope="col">Digest</th><th scope="col">Actions</th></tr></thead>
+    <tbody>
+    {{range .Subscriptions}}
+    <tr>
+      <th scope="row">{{.ID}}{{if .Spec.Allowlist}}<span class="secondary">Allowlist</span>{{end}}</th>
+      <td>{{.State}}</td><td class="time">{{when .Info.FetchedAt}}</td><td>{{.Info.RuleCount}}</td>
+      <td><code>{{label .Info.Digest}}</code></td>
+      <td><div class="toolbar">
+        <form action="/blocklists/refresh" method="post">
+          <input type="hidden" name="csrf" value="{{$.CSRF}}">
+          <input type="hidden" name="id" value="{{.ID}}">
+          <button type="submit" class="button" aria-label="Refresh {{.ID}}">Refresh</button>
+        </form>
+        <form action="/blocklists/toggle" method="post">
+          <input type="hidden" name="csrf" value="{{$.CSRF}}">
+          <input type="hidden" name="revision" value="{{$.Revision}}">
+          <input type="hidden" name="id" value="{{.ID}}">
+          <input type="hidden" name="enabled" value="{{if .Spec.Enabled}}false{{else}}true{{end}}">
+          <button type="submit" class="button" aria-label="{{if .Spec.Enabled}}Disable{{else}}Enable{{end}} {{.ID}}">{{if .Spec.Enabled}}Disable{{else}}Enable{{end}}</button>
+        </form>
+      </div></td>
+    </tr>
+    {{else}}<tr><td colspan="6" class="empty">No subscriptions configured.</td></tr>{{end}}
+    </tbody>
+  </table>
+</div>
+{{with .Status}}<details class="panel section"><summary>Refresh diagnostics</summary><pre class="output">{{pretty .}}</pre></details>{{end}}
+{{template "probe" .}}
+<section class="panel section">
+  <h2>Subscription settings</h2>
+  <p id="subscription-help" class="muted">Use a named HTTPS <code>url</code> or a provisioned local <code>file</code>. An enabled subscription waits for a valid artifact before filtering. Group selections are managed in <a href="/policies">Policies</a>.</p>
+  <form action="/blocklists" method="post" class="stack">
+    {{template "revision-fields" .}}
+    <label>Subscriptions JSON <textarea name="settings" rows="12" spellcheck="false" required aria-describedby="subscription-help">{{.EditText}}</textarea></label>
+    <button type="submit" class="button primary">Save subscriptions</button>
+  </form>
+</section>
+{{end}}
+
+{{define "probe"}}
+<section class="panel section">
+  <h2>Test a DNS decision</h2>
+  <form action="{{.Path}}/test" method="post" class="toolbar">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <label>Client IP <input name="client" value="{{with .Feedback.Answer}}{{.Client}}{{end}}" placeholder="192.0.2.10" required></label>
+    <label>Question <input name="question" value="{{with .Feedback.Answer}}{{.Question}}{{end}}" placeholder="name.example" maxlength="254" required></label>
+    <label>Type <input class="short" name="type" value="{{if .Feedback.Answer}}{{.Feedback.Answer.Type}}{{else}}A{{end}}" maxlength="16" required></label>
+    <button type="submit" class="button">Run test</button>
+  </form>
+  {{with .Feedback.Answer}}
+  <dl class="facts probe" aria-label="DNS decision">
+    <div><dt>Mode</dt><dd>{{label .Selection.Policy.Mode}}</dd></div>
+    <div><dt>Policy source</dt><dd>{{label .Selection.Precedence}}</dd></div>
+    <div><dt>Identity</dt><dd>{{label .Selection.Confidence}}{{with .Selection.Device}} · {{.}}{{end}}</dd></div>
+    <div><dt>Identity age</dt><dd><span title="{{when .Selection.Seen}}">{{age .Selection.Seen}}</span></dd></div>
+    <div><dt>Group</dt><dd>{{label .Selection.Group}}</dd></div>
+    <div><dt>Upstream pool</dt><dd>{{label .Selection.Policy.Pool}}</dd></div>
+    <div><dt>Decision</dt><dd>{{label .Result.Origin}} · {{label .Result.Reason}}{{if .ShowsRCode}} · {{.RCode}}{{end}}</dd></div>
+    <div><dt>Matched rule</dt><dd>{{label .Result.Rule}}</dd></div>
+  </dl>
+  {{end}}
+</section>
+{{end}}
+
+{{define "history"}}
+{{if .Stats.Enabled}}
+  {{with .Stats.Error}}<p class="message error" role="alert">{{.}}</p>{{end}}
+  <form action="/query-log" method="get" class="toolbar">
+    <label>Client <input name="client" value="{{.HistoryClient}}"></label>
+    <label>Question <input name="question" type="search" value="{{.HistoryName}}"></label>
+    <label>Outcome <input name="outcome" placeholder="NXDOMAIN, local, …" value="{{.HistoryOutcome}}"></label>
+    <label>From (UTC) <input name="after" type="datetime-local" value="{{.HistoryAfter}}"></label>
+    <label>Until (UTC) <input name="until" type="datetime-local" value="{{.HistoryUntil}}"></label>
+    <button type="submit" class="button">Filter queries</button>
+  </form>
+  <div class="panel table-box" role="region" aria-label="Query history" tabindex="0">
+    <table>
+      <thead><tr><th scope="col">Time (UTC)</th><th scope="col">Node</th><th scope="col">Client</th><th scope="col">Question</th><th scope="col">Type</th><th scope="col">Outcome</th><th scope="col">Rule</th><th scope="col">Cache</th><th scope="col">Latency</th></tr></thead>
+      <tbody>{{range .History.Entries}}<tr><td class="time">{{when .Time}}</td><td>{{label .Node}}</td><td>{{label .Client}}</td><th scope="row">{{label .Name}}</th><td>{{.TypeLabel}}</td><td>{{.RCodeLabel}} · {{.Origin}}<span class="secondary">{{.Reason}}</span></td><td>{{label .Rule}}</td><td>{{label .Cache}}</td><td>{{.Latency}}</td></tr>
+        {{else}}<tr><td colspan="9" class="empty">No queries match these filters.</td></tr>{{end}}</tbody>
+    </table>
+  </div>
+  <nav class="toolbar" aria-label="Query history pagination">
+    {{with .HistoryFirst}}<a class="button" href="{{.}}">First page</a>{{end}}
+    {{with .HistoryMore}}<a class="button" href="{{.}}">Older queries</a>{{end}}
+  </nav>
+{{else}}
+  <section class="panel section"><p>Query history is disabled. Aggregate counts remain available on the <a href="/">Overview</a>.</p></section>
+{{end}}
+{{end}}
+
+{{define "settings"}}
+<section class="panel section">
+  <h2>Upstream endpoints</h2>
+  <form action="/settings/test-upstream" method="post" class="toolbar">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <label>Pool <select name="pool" required><option value="">Choose a pool</option>{{range $id, $_ := .Desired.Pools}}<option value="{{$id}}">{{$id}}</option>{{end}}</select></label>
+    <button type="submit" class="button">Test encrypted endpoints</button>
+  </form>
+  {{with .Feedback.Upstream}}<pre class="output" aria-label="Upstream test results">{{pretty .}}</pre>{{end}}
+  <form action="/settings/upstreams" method="post" class="stack">
+    {{template "revision-fields" .}}
+    <label>Pools JSON <textarea name="settings" rows="12" spellcheck="false" required>{{.PoolText}}</textarea></label>
+    <button type="submit" class="button primary">Save upstreams</button>
+  </form>
+</section>
+<section class="panel section">
+  <h2>Import and export</h2>
+  <p id="import-help" class="muted">The portable settings file covers desired DNS configuration. It excludes credentials, query history, sessions and discovered inventory. Applying an import replaces the current desired settings.</p>
+  <p><a class="button" href="/settings/export">Download portable settings</a></p>
+  <form action="/settings/import" method="post" class="stack">
+    {{template "revision-fields" .}}
+    <label>Portable settings JSON <textarea name="settings" rows="8" spellcheck="false" required aria-describedby="import-help">{{.Feedback.SettingsImport}}</textarea></label>
+    <button type="submit" class="button primary">Apply settings import</button>
+  </form>
+</section>
+<section class="panel section">
+  <h2>Instance status</h2>
+  <dl class="facts"><div><dt>DNS readiness</dt><dd>{{if .Ready}}Ready{{else}}Starting{{end}}</dd></div><div><dt>Active revision</dt><dd>{{.Revision}}</dd></div></dl>
+  {{with .Status}}<pre class="output">{{pretty .}}</pre>{{end}}
+</section>
+{{end}}
+
+{{define "revision-fields"}}
+<input type="hidden" name="csrf" value="{{.CSRF}}">
+<input type="hidden" name="revision" value="{{.EditRevision}}">
+{{end}}

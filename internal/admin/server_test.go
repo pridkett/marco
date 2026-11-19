@@ -1,0 +1,302 @@
+package admin
+
+import (
+	"context"
+	"database/sql"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"net/netip"
+	"net/url"
+	"path/filepath"
+	"regexp"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/miekg/dns"
+	"github.com/pridkett/marco/internal/auth"
+	"github.com/pridkett/marco/internal/config"
+	"github.com/pridkett/marco/internal/contract"
+	"github.com/pridkett/marco/internal/querylog"
+)
+
+type testDB struct{ db *sql.DB }
+
+func (s testDB) DB() *sql.DB { return s.db }
+func (s testDB) Write(ctx context.Context, fn func(*sql.Tx) error) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if err := fn(tx); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+type fixture struct {
+	handler  http.Handler
+	db       *sql.DB
+	state    config.State
+	cookie   *http.Cookie
+	csrf     string
+	triggers int
+}
+
+func setup(t *testing.T) *fixture {
+	t.Helper()
+	db, err := sql.Open("sqlite", filepath.Join(t.TempDir(), "admin.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	password, err := auth.HashPassword([]byte("local recovery password"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager, err := auth.New(t.Context(), testDB{db}, auth.Settings{
+		PublicURL: "https://marco.test", Username: "operator", PasswordHash: password,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	logPath := filepath.Join(t.TempDir(), "history.sqlite")
+	history, err := querylog.Open(logPath, querylog.Settings{Enabled: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	history.Observe(contract.Event{
+		Input: contract.Input{
+			Time: now.Add(-time.Minute), Name: "blocked.test.", Type: dns.TypeA, Peer: netip.MustParseAddr("192.0.2.2"),
+		},
+		Result: contract.Result{Origin: "policy", RCode: dns.RcodeNameError, Reason: "subscription-block", Rule: "test"},
+		Node:   "fixture", Latency: time.Millisecond,
+	})
+	if err := history.Close(); err != nil {
+		t.Fatal(err)
+	}
+	history, err = querylog.Open(logPath, querylog.Settings{Enabled: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { history.Close() })
+	desired := config.Defaults()
+	desired.Groups = map[string]config.Policy{"IoT": {Mode: config.LocalOnly}}
+	desired.Pools = map[string][]config.Endpoint{"primary": {{Transport: "dot", ServerName: "resolver.test", Address: "192.0.2.71"}}}
+	desired.Zones = []config.Zone{{Name: "home.arpa.", Private: true, Publish: true}}
+	desired.Records = []config.Record{{Name: "console.home.arpa.", Type: "CNAME", Value: "no-owner.home.arpa."}}
+	desired.Devices = map[string]config.DeviceSettings{"cam-01": {Group: "IoT"}}
+	desired.Subscriptions = map[string]config.Subscription{
+		"fixture": {Enabled: true, URL: "https://filter.test/domains.txt"},
+		"staging": {Enabled: true, URL: "https://filter.test/staging.txt"},
+	}
+	fixture := &fixture{db: db, state: config.State{
+		Revision: 4, Desired: desired,
+		Devices: map[string]config.Device{"cam-01": {
+			ID: "cam-01", Canonical: "porch-camera", Reported: "Camera <L1>", Controller: "test controller", Site: "site",
+			Connected: true, LastSeen: now.Add(-time.Minute), LastPoll: now.Add(-time.Minute), Network: "Cameras",
+			Addresses: []config.Address{
+				{IP: netip.MustParseAddr("192.0.2.32"), Active: true, Publish: true},
+				{IP: netip.MustParseAddr("2001:db8::30"), Conflicted: true},
+			},
+		}},
+		SitePolls: map[string]time.Time{"site": now.Add(-time.Minute)},
+		Artifacts: map[string]config.Artifact{
+			"fixture": {Source: desired.Subscriptions["fixture"], Digest: "fixture-digest", RuleCount: 100, FetchedAt: now},
+		},
+	}}
+	selection := contract.Selection{Group: "IoT", Device: "cam-01", Confidence: "confirmed", Precedence: "device", Seen: now, Policy: desired.Groups["IoT"]}
+	fixture.handler = New(manager, history, Hooks{
+		Snapshot: func() config.State { return fixture.state },
+		Revision: func() uint64 { return fixture.state.Revision },
+		Ready:    func() bool { return true },
+		Status:   func() any { return map[string]any{"memory": 0, "upstream": "ready"} },
+		Poll: func() error {
+			fixture.triggers++
+			return nil
+		},
+		Refresh: func(id string) error {
+			if id != "fixture" {
+				return fmt.Errorf("unknown list")
+			}
+			fixture.triggers++
+			return nil
+		},
+		Lookup:      func(string, uint16) contract.LocalResult { return contract.LocalResult{Found: true} },
+		Published:   func(id string) bool { return id == "cam-01" },
+		LocalIssues: func() any { return []string{"test-collision"} },
+		Preview: func(in contract.Input) (contract.Selection, contract.Result) {
+			return selection, contract.Result{Origin: "policy", RCode: dns.RcodeRefused, Reason: "local-only", Rule: "test-rule"}
+		},
+		Select: func(netip.Addr, time.Time) contract.Selection { return selection },
+		TestUpstream: func(_ context.Context, pool string) (any, error) {
+			return map[string]any{"status": "reachable", "pool": pool}, nil
+		},
+		Update: func(_ context.Context, base uint64, change func(*config.State) error) (uint64, error) {
+			if base != fixture.state.Revision {
+				return fixture.state.Revision, fmt.Errorf("stale edit")
+			}
+			if err := change(&fixture.state); err != nil {
+				return fixture.state.Revision, err
+			}
+			fixture.state.Revision++
+			return fixture.state.Revision, nil
+		},
+	})
+	return fixture
+}
+
+var csrfPattern = regexp.MustCompile(`name="csrf" value="([A-Za-z0-9_-]{43})"`)
+
+func request(h http.Handler, method, path string, form url.Values, cookies ...*http.Cookie) *httptest.ResponseRecorder {
+	r := httptest.NewRequest(method, "https://marco.test"+path, strings.NewReader(form.Encode()))
+	if form != nil {
+		r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		r.Header.Set("Origin", "https://marco.test")
+	}
+	for _, c := range cookies {
+		r.AddCookie(c)
+	}
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	return w
+}
+
+func (f *fixture) login(t *testing.T) {
+	t.Helper()
+	login := request(f.handler, "GET", "/login", nil)
+	match := csrfPattern.FindStringSubmatch(login.Body.String())
+	if login.Code != http.StatusOK || len(match) != 2 {
+		t.Fatalf("missing login page: %d, %s", login.Code, login.Body.String())
+	}
+	result := request(f.handler, "POST", "/login", url.Values{
+		"csrf": {match[1]}, "method": {"local"}, "username": {"operator"}, "password": {"local recovery password"},
+	}, login.Result().Cookies()[0])
+	if result.Code != http.StatusSeeOther {
+		t.Fatalf("sign-in failed: %d %s", result.Code, result.Body.String())
+	}
+	f.cookie = result.Result().Cookies()[0]
+	main := request(f.handler, "GET", "/", nil, f.cookie)
+	match = csrfPattern.FindStringSubmatch(main.Body.String())
+	if main.Code != http.StatusOK || len(match) != 2 {
+		t.Fatalf("missing authenticated session: %d %s", main.Code, main.Body.String())
+	}
+	f.csrf = match[1]
+}
+
+func checkContent(t *testing.T, w *httptest.ResponseRecorder, want ...string) {
+	t.Helper()
+	if w.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", w.Code, w.Body.String())
+	}
+	for _, needle := range append(want, "</html>") {
+		if !strings.Contains(w.Body.String(), needle) {
+			t.Errorf("response missing %q", needle)
+		}
+	}
+}
+
+func TestRoutesReadyAuthAndRenderedViews(t *testing.T) {
+	f := setup(t)
+	unauthenticated := request(f.handler, "GET", "/settings/export", nil)
+	if unauthenticated.Code != http.StatusSeeOther || unauthenticated.Header().Get("Location") != "/login" {
+		t.Fatal("settings export is reachable without sign-in")
+	}
+	plain := httptest.NewRequest("GET", "http://marco.test/login", nil)
+	w := httptest.NewRecorder()
+	f.handler.ServeHTTP(w, plain)
+	if w.Code != http.StatusBadRequest || len(w.Result().Cookies()) != 0 {
+		t.Fatal("plaintext admin request accepted")
+	}
+	ready := request(f.handler, "GET", "/readyz", nil)
+	if ready.Code != http.StatusOK || ready.Body.String() != "OK\n" {
+		t.Fatal("readiness should be usable before sign-in")
+	}
+
+	f.login(t)
+	cases := []struct {
+		path string
+		want []string
+	}{
+		{"/", []string{"Recent activity", "Integration health", "Revision 4"}},
+		{"/devices?search=Cameras", []string{"porch-camera", "Camera &lt;L1&gt;", "Ownership conflict", "test-collision", "Assigned to IoT", "Published"}},
+		{"/devices/edit?id=cam-01", []string{"Save device", "cam-01"}},
+		{"/local-dns", []string{"console.home.arpa.", "Unresolved", "Private", "test-collision"}},
+		{"/policies", []string{"Client groups", "Test a DNS decision", "local-only"}},
+		{"/blocklists", []string{"fixture-digest", "Waiting for valid list", "Refresh fixture", "/blocklists/test"}},
+		{"/query-log?question=BLOCKED&outcome=NXDOMAIN", []string{"blocked.test.", "subscription-block", "fixture", "192.0.2.2"}},
+		{"/settings", []string{"Test encrypted endpoints", "Import and export", "Instance status"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.path, func(t *testing.T) {
+			resp := request(f.handler, "GET", tc.path, nil, f.cookie)
+			checkContent(t, resp, tc.want...)
+			if resp.Header().Get("Cache-Control") != "no-store" || !strings.Contains(resp.Header().Get("Content-Security-Policy"), "frame-ancestors 'none'") {
+				t.Fatal("page missing security headers")
+			}
+		})
+	}
+	probe := request(f.handler, "POST", "/policies/test", url.Values{
+		"csrf": {f.csrf}, "client": {"192.0.2.32"}, "question": {"blocked.test"}, "type": {"AAAA"},
+	}, f.cookie)
+	checkContent(t, probe, "test-rule", "REFUSED", "confirmed")
+	testUpstream := request(f.handler, "POST", "/settings/test-upstream", url.Values{"csrf": {f.csrf}, "pool": {"primary"}}, f.cookie)
+	checkContent(t, testUpstream, "Upstream test completed", "reachable")
+	css := request(f.handler, "GET", "/assets/admin.css", nil)
+	if css.Code != http.StatusOK || !strings.HasPrefix(css.Header().Get("Content-Type"), "text/css") {
+		t.Fatalf("missing embedded styles: %d", css.Code)
+	}
+}
+
+func TestRevisionConflictsCSRFSettingsAndAudit(t *testing.T) {
+	f := setup(t)
+	f.login(t)
+	post := func(path string, form url.Values) *httptest.ResponseRecorder {
+		form.Set("csrf", f.csrf)
+		return request(f.handler, "POST", path, form, f.cookie)
+	}
+	missing := request(f.handler, "POST", "/devices/poll", url.Values{"csrf": {"missing"}}, f.cookie)
+	if missing.Code != http.StatusForbidden || f.triggers != 0 {
+		t.Fatal("controller poll bypassed CSRF")
+	}
+	poll := post("/devices/poll", url.Values{})
+	checkContent(t, poll, "UniFi poll requested")
+
+	if invalid := post("/settings/import", url.Values{"revision": {"4"}, "settings": {`{"version":1,"password":"leak"}`}}); invalid.Code != http.StatusBadRequest || f.state.Revision != 4 {
+		t.Fatalf("invalid settings were imported: %d", invalid.Code)
+	}
+	updated := post("/devices/edit", url.Values{"revision": {"4"}, "id": {"cam-01"}, "settings": {`{"group":"IoT","unpublish":true}`}})
+	if updated.Code != http.StatusSeeOther || updated.Header().Get("X-Marco-Revision") != "5" || !f.state.Desired.Devices["cam-01"].Unpublish {
+		t.Fatalf("edit failed: %d", updated.Code)
+	}
+	replayed := post("/devices/edit", url.Values{"revision": {"4"}, "id": {"cam-01"}, "settings": {`{"group":"IoT"}`}})
+	if replayed.Code != http.StatusConflict || !strings.Contains(replayed.Body.String(), `name="revision" value="4"`) ||
+		!strings.Contains(replayed.Body.String(), "Revision 5 is active") || !f.state.Desired.Devices["cam-01"].Unpublish {
+		t.Fatalf("stale edit could overwrite a newer configuration: %d", replayed.Code)
+	}
+	off := post("/blocklists/toggle", url.Values{"revision": {"5"}, "id": {"fixture"}, "enabled": {"false"}})
+	if off.Code != http.StatusSeeOther || f.state.Desired.Subscriptions["fixture"].Enabled {
+		t.Fatalf("list could not be disabled: %d", off.Code)
+	}
+
+	exported := request(f.handler, "GET", "/settings/export", nil, f.cookie)
+	var desired config.Desired
+	if err := json.Unmarshal(exported.Body.Bytes(), &desired); err != nil || desired.Version != config.Version ||
+		exported.Header().Get("X-Marco-Revision") != "6" || strings.Contains(exported.Body.String(), "fixture-digest") ||
+		strings.Contains(exported.Body.String(), "recuper") {
+		t.Fatalf("invalid portable settings export: %s, %v", exported.Body.String(), err)
+	}
+
+	var count int
+	if err := f.db.QueryRow("SELECT COUNT(*) FROM admin_audit WHERE operation = 'edit-device' AND result = 'success' AND revision = 5 AND account = 'local:operator'").Scan(&count); err != nil || count != 1 {
+		t.Fatalf("edit audit missing: %v", err)
+	}
+	logout := post("/logout", url.Values{})
+	if logout.Code != http.StatusSeeOther || request(f.handler, "GET", "/devices", nil, f.cookie).Code != http.StatusSeeOther {
+		t.Fatal("logout did not revoke the session")
+	}
+}
