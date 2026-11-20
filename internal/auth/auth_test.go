@@ -51,9 +51,11 @@ func openManager(t *testing.T, settings Settings) *Manager {
 	return m
 }
 
+const localTestPassword = "lab"
+
 func localSettings(t *testing.T) Settings {
 	t.Helper()
-	hash, err := HashPassword([]byte("recuperate DNS safely"))
+	hash, err := HashPassword([]byte(localTestPassword))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -108,11 +110,11 @@ func TestLocalRecoveryWithOfflineIssuerAndRotation(t *testing.T) {
 	}
 	w := httptest.NewRecorder()
 	r.Header.Set("Origin", "https://elsewhere.test")
-	if err := m.LoginLocal(w, r, "operator", "recuperate DNS safely", csrf); !errors.Is(err, ErrCSRF) {
+	if err := m.LoginLocal(w, r, "operator", localTestPassword, csrf); !errors.Is(err, ErrCSRF) {
 		t.Fatalf("foreign origin: %v", err)
 	}
 	r.Header.Set("Origin", "https://marco.test")
-	if err := m.LoginLocal(w, r, "operator", "recuperate DNS safely", csrf); err != nil {
+	if err := m.LoginLocal(w, r, "operator", localTestPassword, csrf); err != nil {
 		t.Fatal(err)
 	}
 	old := testCookie(t, w, sessionCookie)
@@ -121,7 +123,7 @@ func TestLocalRecoveryWithOfflineIssuerAndRotation(t *testing.T) {
 	}
 	w = httptest.NewRecorder()
 	r.AddCookie(old)
-	if err := m.LoginLocal(w, r, "operator", "recuperate DNS safely", csrf); err != nil {
+	if err := m.LoginLocal(w, r, "operator", localTestPassword, csrf); err != nil {
 		t.Fatal(err)
 	}
 	if _, valid := m.Session(browserRequest(http.MethodGet, "/", old)); valid {
@@ -166,7 +168,7 @@ func TestLoginRateAndTrustedProxy(t *testing.T) {
 			t.Fatalf("invalid password: %v", err)
 		}
 	}
-	if err := m.LoginLocal(httptest.NewRecorder(), r, "operator", "recuperate DNS safely", csrf); !errors.Is(err, ErrRateLimit) {
+	if err := m.LoginLocal(httptest.NewRecorder(), r, "operator", localTestPassword, csrf); !errors.Is(err, ErrRateLimit) {
 		t.Fatalf("rate limit: %v", err)
 	}
 }

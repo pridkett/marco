@@ -26,8 +26,11 @@ const (
 const hashPrefix = "$argon2id$v=19$m=19456,t=2,p=1$"
 
 func HashPassword(password []byte) (string, error) {
-	if len(password) < 12 || len(password) > maxPassword {
-		return "", errors.New("password must be between 12 and 1024 bytes")
+	if len(password) == 0 {
+		return "", errors.New("password cannot be empty")
+	}
+	if len(password) > maxPassword {
+		return "", fmt.Errorf("password exceeds %d bytes", maxPassword)
 	}
 	salt := make([]byte, saltSize)
 	if _, err := rand.Read(salt); err != nil {
