@@ -1,0 +1,148 @@
+{{define "overview"}}
+{{$dashboard := .Dashboard}}
+{{if $dashboard.Control}}
+<section class="panel protection" aria-labelledby="protection-title" data-protection data-remaining="{{$dashboard.Blocking.RemainingSeconds}}">
+  <div class="protection-copy">
+    <span class="protection-icon{{if $dashboard.Blocking.Paused}} paused{{end}}" aria-hidden="true"><span></span></span>
+    <div>
+      <h2 id="protection-title"><span data-status-title aria-live="polite">{{if $dashboard.Blocking.Paused}}Blocking paused{{else}}Blocking active{{end}}</span></h2>
+      <p class="muted">
+        <span data-active-copy {{if $dashboard.Blocking.Paused}}hidden{{end}}>Blocklists, service blocks, and manual domain denies are enforced.</span>
+        <span data-timed-copy {{if or (not $dashboard.Blocking.Paused) $dashboard.Blocking.Until.IsZero}}hidden{{end}}><span data-countdown hidden></span> Resumes at <time data-resume-time {{if not $dashboard.Blocking.Until.IsZero}}datetime="{{$dashboard.Blocking.Until.Format "2006-01-02T15:04:05Z07:00"}}"{{end}}>{{when $dashboard.Blocking.Until}}</time>.</span>
+        <span data-indefinite-copy {{if or (not $dashboard.Blocking.Paused) (not $dashboard.Blocking.Until.IsZero)}}hidden{{end}}>Paused until you resume blocking.</span>
+      </p>
+    </div>
+  </div>
+  <div class="protection-actions">
+    <details class="pause-options" {{if $dashboard.Blocking.Paused}}hidden{{end}}>
+      <summary class="button primary">Pause blocking</summary>
+      <form action="/blocking?range={{urlquery .Range}}" method="post" class="panel pause-menu" aria-label="Pause duration">
+        <input type="hidden" name="csrf" value="{{.CSRF}}">
+        {{range $dashboard.PauseOptions}}
+        <button type="submit" name="duration" value="{{.Value}}">{{.Label}}</button>
+        {{end}}
+      </form>
+    </details>
+    <form action="/blocking?range={{urlquery .Range}}" method="post" data-resume {{if not $dashboard.Blocking.Paused}}hidden{{end}}>
+      <input type="hidden" name="csrf" value="{{.CSRF}}">
+      <button class="button primary" name="duration" value="resume" type="submit">Resume blocking</button>
+    </form>
+  </div>
+</section>
+{{end}}
+
+<section aria-labelledby="activity-title">
+  <div class="dashboard-heading">
+    <h2 id="activity-title">Recent activity</h2>
+    <form action="/" method="get" class="activity-range">
+      <label class="visually-hidden" for="activity-range">Activity time range</label>
+      <select name="range" id="activity-range">
+        {{range $dashboard.Ranges}}<option {{if eq $.Range .Label}}selected{{end}}>{{.Label}}</option>{{end}}
+      </select>
+      <button class="button" type="submit">Refresh</button>
+    </form>
+  </div>
+  <dl class="metrics dashboard-metrics" aria-label="DNS activity for {{.Range}}">
+    <div class="panel metric"><dt>DNS queries</dt><dd>{{count .Counts.Queries}}</dd></div>
+    <div class="panel metric blocked-metric"><dt>Policy blocks</dt><dd>{{count .Counts.Blocks}}</dd></div>
+    <div class="panel metric"><dt>Local DNS hits</dt><dd>{{count .Counts.Local}}</dd></div>
+    <div class="panel metric"><dt>Cache hits</dt><dd>{{count .Counts.Cache}}</dd></div>
+  </dl>
+  <div class="dashboard-grid">
+    {{if $dashboard.Activity}}
+    <section class="panel dashboard-card">
+      <div class="dashboard-card-header">
+        <h2>DNS traffic</h2>
+        <div class="chart-legend">
+          <span>Queries</span><span class="blocked-legend">Policy blocks</span>
+        </div>
+      </div>
+      <div class="traffic-chart">
+        <canvas data-traffic-chart aria-label="DNS queries and policy blocks over time">
+          <table>
+            <thead><tr><th>Interval start (UTC)</th><th>Queries</th><th>Policy blocks</th></tr></thead>
+            <tbody>
+            {{range $dashboard.Activity}}
+            <tr><th>{{.Time.Format "15:04"}}</th><td data-queries="{{.Queries}}">{{count .Queries}}</td><td data-blocks="{{.Blocks}}">{{count .Blocks}}</td></tr>
+            {{end}}
+            </tbody>
+          </table>
+        </canvas>
+        <div class="chart-time"><span>{{$dashboard.Start}}</span><span>UTC</span><span>{{$dashboard.End}}</span></div>
+      </div>
+    </section>
+    {{end}}
+    <section class="panel dashboard-card">
+      <div class="dashboard-card-header">
+        <h2>DNS service</h2><span class="service-health {{if .Ready}}ready{{end}}">{{if .Ready}}Ready{{else}}Starting{{end}}</span>
+      </div>
+      <dl class="dashboard-facts">
+        <div><dt>Average response time</dt><dd>{{.Counts.AverageLatency}}</dd></div>
+        <div><dt>Cache hit rate</dt><dd>{{.Counts.CacheHitRate}}</dd></div>
+        <div><dt>DNS failures</dt><dd>{{count .Counts.Errors}}</dd></div>
+        <div><dt>Query history</dt><dd>{{if .Stats.Enabled}}Enabled{{else}}Disabled{{end}}</dd></div>
+        {{if and .Stats.Enabled .Stats.Dropped}}<div><dt>Dropped history entries</dt><dd>{{count .Stats.Dropped}}</dd></div>{{end}}
+      </dl>
+      {{with .Stats.Error}}<p class="dashboard-note error-text">{{.}}</p>{{end}}
+    </section>
+  </div>
+</section>
+
+<section aria-labelledby="rankings-title">
+  <div class="dashboard-heading">
+    <h2 id="rankings-title">Query rankings</h2>
+    {{with $dashboard.HistoryURL}}<a href="{{.}}" class="button">Open query log</a>{{end}}
+  </div>
+  {{if not .Stats.Enabled}}
+  <p class="panel dashboard-note muted">Query history must be enabled to rank clients and domains.</p>
+  {{else if $dashboard.RankError}}
+  <p class="panel dashboard-note error-text">Query rankings are temporarily unavailable.</p>
+  {{else}}
+  <div class="dashboard-rankings">
+    {{range $dashboard.Rankings}}
+    {{$panel := .}}
+    <section class="panel dashboard-card">
+      <div class="dashboard-card-header"><h3>{{.Title}}</h3></div>
+      {{if .Rows}}
+      <table class="ranking-table">
+        <thead><tr><th scope="col">{{.Label}}</th><th scope="col">Queries</th></tr></thead>
+        <tbody>
+          {{range .Rows}}
+          <tr>
+            <th scope="row"><a href="{{.URL}}">{{.Label}}</a>{{with .Detail}}<span class="secondary">{{.}}</span>{{end}}</th>
+            <td>{{count .Count}}<meter aria-hidden="true" min="0" max="{{$panel.Max}}" value="{{.Count}}"></meter></td>
+          </tr>
+          {{end}}
+        </tbody>
+      </table>
+      {{else}}<p class="dashboard-note muted">{{.Empty}}</p>{{end}}
+    </section>
+    {{end}}
+  </div>
+  {{end}}
+</section>
+
+<details class="panel dashboard-integrations">
+  <summary>Integration health <span class="muted">Revision {{.Revision}}</span></summary>
+  <div class="dashboard-integrations-body">
+    <div class="panel-grid">
+      <section class="panel section">
+        <h2>UniFi sync</h2>
+        {{if .PollStatus}}
+        <dl class="facts">{{range .PollStatus}}<div><dt>{{.Title}}</dt><dd><span title="{{when .Updated}}">{{age .Updated}}</span></dd></div>{{end}}</dl>
+        {{else}}<p class="muted">No completed site polls.</p>{{end}}
+        <a href="/devices">Open devices</a>
+      </section>
+      <section class="panel section">
+        <h2>Blocklist refreshes</h2>
+        {{if .Subscriptions}}
+        <dl class="facts">{{range .Subscriptions}}<div><dt>{{if .Spec.Name}}{{.Spec.Name}}{{else}}{{.ID}}{{end}}</dt><dd>{{.State}}{{if not .Info.FetchedAt.IsZero}} · <span title="{{when .Info.FetchedAt}}">{{age .Info.FetchedAt}}</span>{{end}}</dd></div>{{end}}</dl>
+        {{else}}<p class="muted">No subscriptions configured.</p>{{end}}
+        <a href="/blocklists">Open blocklists</a>
+      </section>
+    </div>
+    {{with .Status}}<pre class="output">{{pretty .}}</pre>{{end}}
+  </div>
+</details>
+<script src="/assets/dashboard.js" defer></script>
+{{end}}

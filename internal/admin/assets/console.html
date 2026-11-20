@@ -44,7 +44,7 @@
 <a href="#content" class="skip-link">Skip to content</a>
 <header class="masthead">
   <div class="shell masthead-row">
-    <a href="/" class="brand" aria-label="Marco overview"><span class="brand-mark" aria-hidden="true">M</span> Marco</a>
+    <a href="/" class="brand" aria-label="Marco dashboard"><span class="brand-mark" aria-hidden="true">M</span> Marco</a>
     <form action="/logout" method="post" class="account">
       <span class="account-name" title="{{.DisplayName}}">{{.DisplayName}}</span>
       <input type="hidden" name="csrf" value="{{.CSRF}}">
@@ -58,7 +58,7 @@
 <main id="content" class="shell main-content" tabindex="-1">
   <div class="page-title">
     <h1>{{.Title}}</h1>
-    {{if ne .Path "/services"}}<span class="muted">Revision {{.Revision}}</span>{{end}}
+    {{if and (ne .Path "/") (ne .Path "/services")}}<span class="muted">Revision {{.Revision}}</span>{{end}}
   </div>
   {{with .Feedback.Error}}<p class="message error" role="alert">{{.}}</p>{{end}}
   {{with .Feedback.Message}}<p class="message success" role="status">{{.}}</p>{{end}}
@@ -75,55 +75,6 @@
 </main>
 </body>
 </html>
-{{end}}
-
-{{define "overview"}}
-<form action="/" method="get" class="toolbar">
-  <label>Recent activity
-    <select name="range">
-      <option {{if eq .Range "15 minutes"}}selected{{end}}>15 minutes</option>
-      <option {{if eq .Range "1 hour"}}selected{{end}}>1 hour</option>
-      <option {{if eq .Range "24 hours"}}selected{{end}}>24 hours</option>
-    </select>
-  </label>
-  <button class="button" type="submit">Update range</button>
-</form>
-<dl class="metrics" aria-label="Recent DNS activity">
-  <div class="panel metric"><dt>Queries</dt><dd>{{.Counts.Queries}}</dd></div>
-  <div class="panel metric"><dt>Local hits</dt><dd>{{.Counts.Local}}</dd></div>
-  <div class="panel metric"><dt>Cache hits</dt><dd>{{.Counts.Cache}}</dd></div>
-  <div class="panel metric"><dt>Policy blocks</dt><dd>{{.Counts.Blocks}}</dd></div>
-</dl>
-<div class="panel-grid">
-  <section class="panel section">
-    <h2>DNS service</h2>
-    <dl class="facts">
-      <div><dt>Readiness</dt><dd>{{if .Ready}}Ready{{else}}Starting{{end}}</dd></div>
-      <div><dt>Cache hit rate</dt><dd>{{.Counts.CacheHitRate}}</dd></div>
-      <div><dt>Upstream failures</dt><dd>{{.Counts.Errors}}</dd></div>
-      <div><dt>Query history</dt><dd>{{if .Stats.Enabled}}Enabled{{else}}Disabled{{end}}</dd></div>
-      {{if .Stats.Enabled}}<div><dt>Dropped history entries</dt><dd>{{.Stats.Dropped}}</dd></div>{{end}}
-    </dl>
-    {{with .Stats.Error}}<p class="message error">{{.}}</p>{{end}}
-  </section>
-  <section class="panel section">
-    <h2>UniFi sync</h2>
-    {{if .PollStatus}}
-    <dl class="facts">{{range .PollStatus}}<div><dt>{{.Title}}</dt><dd><span title="{{when .Updated}}">{{age .Updated}}</span></dd></div>{{end}}</dl>
-    {{else}}<p class="muted">No completed site polls.</p>{{end}}
-    <a href="/devices">Open devices</a>
-  </section>
-  <section class="panel section">
-    <h2>Blocklist refreshes</h2>
-    {{if .Subscriptions}}
-    <dl class="facts">{{range .Subscriptions}}<div><dt>{{if .Spec.Name}}{{.Spec.Name}}{{else}}{{.ID}}{{end}}</dt><dd>{{.State}}{{if not .Info.FetchedAt.IsZero}} · <span title="{{when .Info.FetchedAt}}">{{age .Info.FetchedAt}}</span>{{end}}</dd></div>{{end}}</dl>
-    {{else}}<p class="muted">No subscriptions configured.</p>{{end}}
-    <a href="/blocklists">Open blocklists</a>
-  </section>
-</div>
-{{with .Status}}
-<section class="panel section"><h2>Integration health</h2><pre class="output">{{pretty .}}</pre></section>
-{{end}}
 {{end}}
 
 {{define "devices"}}
@@ -400,7 +351,7 @@
     {{with .HistoryMore}}<a class="button" href="{{.}}">Older queries</a>{{end}}
   </nav>
 {{else}}
-  <section class="panel section"><p>Query history is disabled. Aggregate counts remain available on the <a href="/">Overview</a>.</p></section>
+  <section class="panel section"><p>Query history is disabled. Aggregate counts remain available on the <a href="/">Dashboard</a>.</p></section>
 {{end}}
 {{end}}
 

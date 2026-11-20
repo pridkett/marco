@@ -23,7 +23,7 @@ import (
 	"github.com/pridkett/marco/internal/querylog"
 )
 
-//go:embed assets/*.html assets/*.css
+//go:embed assets/*.html assets/*.css assets/*.js
 var assets embed.FS
 
 const (
@@ -45,6 +45,7 @@ var views = template.Must(template.New("").Funcs(template.FuncMap{
 	"age":        age,
 	"pretty":     pretty,
 	"queryBadge": queryBadge,
+	"count":      formatCount,
 	"label": func(value any) string {
 		s := fmt.Sprint(value)
 		if s == "" {
@@ -70,6 +71,8 @@ type Hooks struct {
 	TestUpstream func(context.Context, string) (any, error)
 	Revision     func() uint64
 	Ready        func() bool
+	Blocking     func(time.Time) contract.BlockingPause
+	SetBlocking  func(context.Context, string, contract.BlockingPause) error
 }
 
 type server struct {
@@ -79,7 +82,7 @@ type server struct {
 }
 
 var navigation = []navItem{
-	{"Overview", "/"}, {"Devices", "/devices"}, {"Local DNS", "/local-dns"},
+	{"Dashboard", "/"}, {"Devices", "/devices"}, {"Local DNS", "/local-dns"},
 	{"Policies", "/policies"}, {"Services", "/services"}, {"Blocklists", "/blocklists"}, {"Query Log", "/query-log"},
 	{"Settings", "/settings"},
 }
@@ -100,6 +103,12 @@ func New(authentication *auth.Manager, history *querylog.Log, hooks Hooks) http.
 		}
 		http.ServeFileFS(w, r, assets, adminCSSFile)
 	}))
+	mux.HandleFunc("GET /assets/dashboard.js", s.secure(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
+		http.ServeFileFS(w, r, assets, "assets/dashboard.js")
+	}))
+	mux.HandleFunc("GET /blocking", s.protected(s.blockingStatus))
+	mux.HandleFunc("POST /blocking", s.protected(s.updateBlocking))
 	mux.HandleFunc("GET /login", s.secure(func(w http.ResponseWriter, r *http.Request) {
 		if _, ok := s.auth.Session(r); ok {
 			http.Redirect(w, r, "/", http.StatusSeeOther)
@@ -182,7 +191,11 @@ func (s *server) secure(next http.HandlerFunc) http.HandlerFunc {
 		if r.URL.Path == "/devices" || r.URL.Path == "/devices/poll" {
 			imageSources += " " + unifiArtworkOrigin
 		}
-		w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'self'; img-src "+imageSources+"; base-uri 'none'; frame-ancestors 'none'; form-action 'self' https:")
+		csp := "default-src 'none'; style-src 'self'; img-src " + imageSources + "; base-uri 'none'; frame-ancestors 'none'; form-action 'self' https:"
+		if r.URL.Path == "/" || r.URL.Path == "/blocking" {
+			csp += "; script-src 'self'; connect-src 'self'"
+		}
+		w.Header().Set("Content-Security-Policy", csp)
 		if s.auth == nil {
 			http.Error(w, "Admin sign-in is unavailable. Check the Marco startup log for details.", http.StatusServiceUnavailable)
 			return

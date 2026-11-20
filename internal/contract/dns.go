@@ -20,6 +20,21 @@ type Input struct {
 	EDNS             bool
 	DNSSEC           bool
 	CheckingDisabled bool
+	BlockingPaused   bool
+}
+
+// BlockingPause is a temporary instance-wide bypass for domain filtering.
+// A paused state with no deadline lasts until an administrator resumes it.
+type BlockingPause struct {
+	Paused bool      `json:"paused"`
+	Until  time.Time `json:"until,omitzero"`
+}
+
+func (p BlockingPause) At(now time.Time) BlockingPause {
+	if p.Paused && (p.Until.IsZero() || now.Before(p.Until)) {
+		return p
+	}
+	return BlockingPause{}
 }
 
 type Result struct {
