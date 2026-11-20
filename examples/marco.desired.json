@@ -39,6 +39,9 @@
   "dynamicTTL": 60,
   "staticTTL": 300,
   "records": [
-    {"name": "welcome.home.arpa.", "type": "A", "value": "192.0.2.10"}
+    {"name": "welcome.home.arpa.", "type": "A", "value": "192.0.2.10"},
+    {"name": "welcome.home.arpa.", "type": "AAAA", "value": "2001:db8::10"},
+    {"name": "alias.home.arpa.", "type": "CNAME", "value": "welcome.home.arpa."},
+    {"name": "10.2.0.192.in-addr.arpa.", "type": "PTR", "value": "welcome.home.arpa."}
   ]
 }
