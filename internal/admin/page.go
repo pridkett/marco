@@ -30,6 +30,7 @@ type page struct {
 	Stats                      querylog.Stats
 	Range                      string
 	Counts                     querylog.Counts
+	Dashboard                  dashboard
 	PollStatus                 []siteStatus
 	Devices                    []deviceRow
 	DeviceSearch, DeviceFilter string
@@ -83,7 +84,7 @@ func (s *server) page(w http.ResponseWriter, r *http.Request, session auth.Sessi
 		state = s.hooks.Snapshot()
 	}
 	p := page{
-		Title: "Overview", Path: path, DisplayName: session.DisplayName, CSRF: session.CSRF, Revision: state.Revision,
+		Title: "Dashboard", Path: path, DisplayName: session.DisplayName, CSRF: session.CSRF, Revision: state.Revision,
 		EditRevision: state.Revision, Nav: navigation, Desired: state.Desired, Feedback: f,
 		Ready: s.hooks.Ready != nil && s.hooks.Ready(),
 	}
@@ -102,12 +103,7 @@ func (s *server) page(w http.ResponseWriter, r *http.Request, session auth.Sessi
 	now := time.Now()
 	switch path {
 	case "/":
-		p.stats(s.history)
-		p.Range = r.URL.Query().Get("range")
-		if _, ok := p.Stats.Recent[p.Range]; !ok {
-			p.Range = "15 minutes"
-		}
-		p.Counts = p.Stats.Recent[p.Range]
+		s.dashboard(r.Context(), &p, r.URL.Query().Get("range"), state, now)
 		p.PollStatus = siteRows(state.SitePolls)
 		p.Subscriptions = sourceRows(state)
 		if s.hooks.Status != nil {

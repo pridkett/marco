@@ -19,7 +19,7 @@ import (
 var ErrBusy = errors.New("database write queue is full")
 var ErrStale = errors.New("configuration revision is stale")
 
-const schema = 1
+const schema = 2
 
 type Store struct {
 	db      *sql.DB
@@ -69,26 +69,32 @@ func (s *Store) migrate(ctx context.Context, initial config.Desired) error {
 		if version > schema {
 			return fmt.Errorf("database schema %d is newer than supported schema %d", version, schema)
 		}
-		if version == schema {
-			return nil
-		}
-		statements := []string{
-			`CREATE TABLE dns_state (id INTEGER PRIMARY KEY CHECK(id=1), revision INTEGER NOT NULL, data BLOB NOT NULL)`,
-			`CREATE TABLE list_artifacts (source TEXT PRIMARY KEY, metadata BLOB NOT NULL, body BLOB NOT NULL) WITHOUT ROWID`,
-			"PRAGMA user_version=1",
-		}
-		for _, stmt := range statements {
-			if _, err := tx.ExecContext(ctx, stmt); err != nil {
+		if version == 0 {
+			statements := []string{
+				`CREATE TABLE dns_state (id INTEGER PRIMARY KEY CHECK(id=1), revision INTEGER NOT NULL, data BLOB NOT NULL)`,
+				`CREATE TABLE list_artifacts (source TEXT PRIMARY KEY, metadata BLOB NOT NULL, body BLOB NOT NULL) WITHOUT ROWID`,
+			}
+			for _, stmt := range statements {
+				if _, err := tx.ExecContext(ctx, stmt); err != nil {
+					return err
+				}
+			}
+			data, err := json.Marshal(config.State{Revision: 1, Desired: initial})
+			if err != nil {
+				return err
+			}
+			if _, err := tx.ExecContext(ctx, "INSERT INTO dns_state VALUES(1, 1, ?)", data); err != nil {
 				return err
 			}
 		}
-		state := config.State{Revision: 1, Desired: initial}
-		data, err := json.Marshal(state)
-		if err != nil {
+		if version < 2 {
+			_, err := tx.ExecContext(ctx, `
+				CREATE TABLE blocking_pause (id INTEGER PRIMARY KEY CHECK(id=1), until_ns INTEGER);
+				PRAGMA user_version=2;
+			`)
 			return err
 		}
-		_, err = tx.ExecContext(ctx, "INSERT INTO dns_state VALUES(1, 1, ?)", data)
-		return err
+		return nil
 	})
 }
 

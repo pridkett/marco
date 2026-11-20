@@ -56,6 +56,6 @@ The deployment file contains startup settings. Marco seeds its database from `in
 - Assign a device from **Devices → Edit → Device group**. The starter groups are `infrastructure`, `mobile`, `iot`, `trusted`, and `other`. They inherit the default policy until edited. Existing instances can add missing groups under **Policies → Add default groups**.
 - Open **Services** to browse the AdGuard Home catalog by category, inspect a service’s hostname rules, and test a hostname and record type. Use the service's policy ID in a filtered group or device’s `services` selection. [Service catalog configuration](docs/operations.md#service-catalog)
 - Use the console’s policy test to see source selection and matching rules. Query history defaults to seven days and 128 MiB. Set `history.enabled` to false for counters only. Set `history.anonymize` and provision `history.anonymizationKey` to pseudonymize client IPs in new history. Use a high-entropy key of at least 16 bytes.
-- Use `/livez` and `/readyz` on the admin port for process and DNS bind health. Review the authenticated Overview and Settings for dependency status.
+- Use `/livez` and `/readyz` on the admin port for process and DNS bind health. Open **Dashboard** for traffic, query rankings, dependency status, and **Pause blocking**.
 
 For UniFi and admin deployment details, migration, and backups, see [Operations](docs/operations.md). The [verification guide](docs/verification.md) covers fixtures and the opt-in resource workload. The expected behaviors and scope are in [SPEC.md](SPEC.md).

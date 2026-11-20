@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/url"
 	"path/filepath"
 	"strings"
@@ -102,6 +103,9 @@ func Open(path string, cfg Settings) (*Log, error) {
 		writer.Close()
 		db.Close()
 		return nil, fmt.Errorf("initialize query history: %w", err)
+	}
+	if err := log.restoreRecent(ctx, time.Now()); err != nil {
+		slog.Warn("could not restore recent DNS counters from query history")
 	}
 	log.pending = make(chan contract.Event, cfg.Queue)
 	log.stop, log.stopped = make(chan struct{}), make(chan struct{})

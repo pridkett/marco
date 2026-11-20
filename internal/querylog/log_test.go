@@ -63,6 +63,17 @@ func TestHistoryFiltersAnonymizationAndRetention(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer l.Close()
+	points, counts := l.Activity(now, 15*time.Minute, time.Minute)
+	if len(points) != 15 || counts.Queries != 3 || counts.Blocks != 3 || counts.Cache != 3 ||
+		counts.AverageLatency() != "2.00 ms" || l.Stats().Total.Queries != 0 {
+		t.Fatalf("retained activity did not restore the rolling counters: %+v", counts)
+	}
+	top, err := l.TopQueries(t.Context(), now.Add(-6*time.Minute), now)
+	if err != nil || len(top.Clients) != 1 || top.Clients[0].Count != 2 ||
+		!strings.HasPrefix(top.Clients[0].Value, "client-") || len(top.Domains) != 2 ||
+		len(top.Blocked) != 2 || top.Blocked[0].Value != "filtered-new.test." {
+		t.Fatalf("unexpected recent rankings: %+v (%v)", top, err)
+	}
 	page, err := l.Search(t.Context(), Filter{Question: "FILTERED", Outcome: "NXDOMAIN", Until: now, Limit: 1})
 	if err != nil || len(page.Entries) != 1 || page.Next == 0 {
 		t.Fatalf("first page: %+v %v", page, err)

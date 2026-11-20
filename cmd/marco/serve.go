@@ -59,6 +59,10 @@ func serve(ctx context.Context, d config.Deployment) error {
 		return err
 	}
 	defer db.Close()
+	blocking, err := db.OpenBlocking(ctx)
+	if err != nil {
+		return fmt.Errorf("load DNS blocking state: %w", err)
+	}
 	p, err := runtime.Open(ctx, db, compile)
 	if err != nil {
 		return err
@@ -84,7 +88,8 @@ func serve(ctx context.Context, d config.Deployment) error {
 	}()
 	for _, bind := range d.DNS.Listen {
 		server, err := dnsserver.Listen(dnsserver.Options{Address: bind, Allow: d.DNS.Allow,
-			MaxUDPSize: d.DNS.MaxUDPSize, Concurrency: d.DNS.Concurrency, Node: d.Node, View: p.View, Observe: history.Observe})
+			MaxUDPSize: d.DNS.MaxUDPSize, Concurrency: d.DNS.Concurrency, Node: d.Node, View: p.View,
+			Observe: history.Observe, Blocking: blocking.Status})
 		if err != nil {
 			return fmt.Errorf("DNS listen %s: %w", bind, err)
 		}
@@ -122,6 +127,7 @@ func serve(ctx context.Context, d config.Deployment) error {
 			slog.Warn("admin sign-in degraded", "error", err)
 		}
 		hooks := admin.Hooks{Catalog: d.Catalog, Snapshot: p.Snapshot, Update: p.Update, Ready: ready, Revision: p.Revision, Refresh: lists.Trigger}
+		hooks.Blocking, hooks.SetBlocking = blocking.Status, blocking.Set
 		hooks.MatchService = func(id, name string, qtype uint16) filter.Match {
 			return p.View().Policies.(*policy.Engine).ServiceMatch(id, name, qtype)
 		}
@@ -129,6 +135,7 @@ func serve(ctx context.Context, d config.Deployment) error {
 			if !admitted(d.DNS.Allow, in.Peer) {
 				return contract.Selection{}, contract.Result{RCode: dns.RcodeRefused, Reason: "source-not-admitted", Origin: "policy"}
 			}
+			in.BlockingPaused = blocking.Status(in.Time).Paused
 			return dnsserver.Preview(p.View(), in)
 		}
 		hooks.Select = func(ip netip.Addr, at time.Time) contract.Selection { return p.View().Policies.Select(ip, at) }

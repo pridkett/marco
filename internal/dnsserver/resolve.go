@@ -34,7 +34,13 @@ func evaluate(ctx context.Context, view *contract.View, in contract.Input, query
 	if selected.Policy.Mode == config.DenyAll {
 		return selected, outcome(dns.RcodeRefused, "policy", "client-deny-all")
 	}
-	manual := view.Policies.Manual(selected, in.Name)
+	manualRule := func(name string) contract.Decision {
+		if in.BlockingPaused {
+			return contract.Decision{}
+		}
+		return view.Policies.Manual(selected, name)
+	}
+	manual := manualRule(in.Name)
 	ruleRef := manual.Rule
 	if manual.Blocked {
 		return selected, policyBlock(manual)
@@ -42,7 +48,7 @@ func evaluate(ctx context.Context, view *contract.View, in contract.Input, query
 	local := view.Local.Lookup(in.Name, in.Type)
 	for _, rr := range local.Answer {
 		if cname, ok := rr.(*dns.CNAME); ok {
-			rule := view.Policies.Manual(selected, dns.CanonicalName(cname.Target))
+			rule := manualRule(dns.CanonicalName(cname.Target))
 			if rule.Blocked {
 				return selected, policyBlock(rule)
 			}
@@ -68,7 +74,7 @@ func evaluate(ctx context.Context, view *contract.View, in contract.Input, query
 			return selected, resolved
 		}
 		target = dns.CanonicalName(local.PublicTarget)
-		manual = view.Policies.Manual(selected, target)
+		manual = manualRule(target)
 	}
 
 	if !in.Recursion {
@@ -108,7 +114,7 @@ func evaluate(ctx context.Context, view *contract.View, in contract.Input, query
 	}
 
 	blocked, tooDeep := checkTargets(reply.Answer, target, func(name string) contract.Decision {
-		return externalRule(view.Policies, selected, in, name, view.Policies.Manual(selected, name))
+		return externalRule(view.Policies, selected, in, name, manualRule(name))
 	})
 	if blocked.Blocked {
 		resolved := policyBlock(blocked)
@@ -142,7 +148,7 @@ func evaluate(ctx context.Context, view *contract.View, in contract.Input, query
 }
 
 func externalRule(policies contract.Policies, selection contract.Selection, in contract.Input, name string, manual contract.Decision) contract.Decision {
-	if manual.Blocked || manual.Allowed || selection.Policy.Mode == config.Unfiltered {
+	if in.BlockingPaused || manual.Blocked || manual.Allowed || selection.Policy.Mode == config.Unfiltered {
 		return manual
 	}
 	return policies.External(selection, name, in.Type, in.Time)

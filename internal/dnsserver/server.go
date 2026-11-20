@@ -24,6 +24,7 @@ type Options struct {
 	Node        string
 	View        func() *contract.View
 	Observe     func(contract.Event)
+	Blocking    func(time.Time) contract.BlockingPause
 }
 
 type Server struct {
@@ -178,6 +179,9 @@ func (h *handler) ServeDNS(w dns.ResponseWriter, request *dns.Msg) {
 		case in.Class != dns.ClassINET:
 			response = outcome(dns.RcodeNotImplemented, "server", "unsupported-class")
 		default:
+			if h.options.Blocking != nil {
+				in.BlockingPaused = h.options.Blocking(now).Paused
+			}
 			selected, response = evaluate(h.ctx, h.options.View(), in, request)
 		}
 	default:

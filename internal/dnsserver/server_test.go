@@ -260,35 +260,36 @@ func TestPolicyChecksOnLocalAndCachedAnswers(t *testing.T) {
 	}
 	upstream := &fixtureUpstream{records: []dns.RR{rr(t, "public.example. 60 IN A 192.0.2.4")}}
 	view := &contract.View{Policies: policies, Local: local, Upstream: upstream}
-	run := func(peer netip.Addr, name string) answer {
+	run := func(peer netip.Addr, name string, paused bool) answer {
 		t.Helper()
 		query := new(dns.Msg).SetQuestion(name, dns.TypeA).SetEdns0(1232, true)
 		_, result := evaluate(context.Background(), view, contract.Input{
 			Name: name, Peer: peer, Type: dns.TypeA, Class: dns.ClassINET, Recursion: true, EDNS: true,
+			BlockingPaused: paused,
 		}, query)
 		return result
 	}
 
-	if result := run(filtered, "public.example."); result.result.RCode != dns.RcodeSuccess || result.result.Rule != "public-allow" {
+	if result := run(filtered, "public.example.", false); result.result.RCode != dns.RcodeSuccess || result.result.Rule != "public-allow" {
 		t.Fatalf("filtered client: %+v", result)
 	}
-	if result := run(filtered, "public.example."); result.result.Origin != "cache" {
+	if result := run(filtered, "public.example.", false); result.result.Origin != "cache" {
 		t.Fatalf("warm reply: %+v", result)
 	}
-	if result := run(localOnly, "public.example."); result.result.RCode != dns.RcodeRefused || upstream.calls.Load() != 2 {
+	if result := run(localOnly, "public.example.", false); result.result.RCode != dns.RcodeRefused || upstream.calls.Load() != 2 {
 		t.Fatalf("local-only client reached upstream/cache: %+v", result)
 	}
-	if result := run(localOnly, "alias.home.arpa."); result.result.Origin != "local" || len(result.message.Answer) != 2 {
+	if result := run(localOnly, "alias.home.arpa.", false); result.result.Origin != "local" || len(result.message.Answer) != 2 {
 		t.Fatalf("local-only client cannot resolve local chain: %+v", result)
 	}
-	if result := run(localOnly, "public-alias.home.arpa."); result.result.RCode != dns.RcodeRefused {
+	if result := run(localOnly, "public-alias.home.arpa.", false); result.result.RCode != dns.RcodeRefused {
 		t.Fatalf("local-only client followed public alias: %+v", result)
 	}
-	if result := run(filtered, "public-alias.home.arpa."); result.result.RCode != dns.RcodeSuccess ||
+	if result := run(filtered, "public-alias.home.arpa.", false); result.result.RCode != dns.RcodeSuccess ||
 		len(result.message.Answer) != 2 || result.message.AuthenticatedData {
 		t.Fatalf("partly synthesized public alias: %+v", result)
 	}
-	if result := run(filtered, "local-hidden.home.arpa."); result.result.RCode != dns.RcodeNameError || !result.extended {
+	if result := run(filtered, "local-hidden.home.arpa.", false); result.result.RCode != dns.RcodeNameError || !result.extended {
 		t.Fatalf("manual denial did not cover local name: %+v", result)
 	}
 	for _, record := range []string{
@@ -297,11 +298,20 @@ func TestPolicyChecksOnLocalAndCachedAnswers(t *testing.T) {
 		"public.example. 60 IN SVCB 0 blocked.example.",
 	} {
 		upstream.records = []dns.RR{rr(t, record)}
-		result := run(filtered, "public.example.")
+		result := run(filtered, "public.example.", false)
 		if result.result.RCode != dns.RcodeNameError || result.result.Rule != "fixture" ||
 			result.result.Cache != "hit" || !result.extended {
 			t.Fatalf("%s bypassed cached target checks: %+v", record, result)
 		}
+		if result := run(filtered, "public.example.", true); result.result.Origin != "cache" || result.result.RCode != dns.RcodeSuccess {
+			t.Fatalf("%s was still blocked during a pause: %+v", record, result)
+		}
+	}
+	if result := run(filtered, "local-hidden.home.arpa.", true); result.result.Origin != "local" {
+		t.Fatalf("manual domain denial was still in force during a pause: %+v", result)
+	}
+	if result := run(localOnly, "public.example.", true); result.result.RCode != dns.RcodeRefused {
+		t.Fatalf("pause bypassed the local-only policy: %+v", result)
 	}
 
 	server := startFixture(t, "127.0.0.1:0", netip.MustParsePrefix("127.0.0.1/32"), view)

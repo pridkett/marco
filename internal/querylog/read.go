@@ -18,6 +18,7 @@ type Counts struct {
 	Misses  uint64
 	Blocks  uint64
 	Errors  uint64
+	Latency time.Duration
 }
 
 type counters struct {
@@ -27,10 +28,12 @@ type counters struct {
 	misses  atomic.Uint64
 	blocks  atomic.Uint64
 	errors  atomic.Uint64
+	latency atomic.Int64
 }
 
 func (c *counters) observe(event contract.Event) {
 	c.queries.Add(1)
+	c.latency.Add(int64(event.Latency))
 	switch event.Origin {
 	case "local":
 		c.local.Add(1)
@@ -54,6 +57,7 @@ func (c *counters) read() Counts {
 	return Counts{
 		Queries: c.queries.Load(), Local: c.local.Load(), Cache: c.cache.Load(),
 		Blocks: c.blocks.Load(), Errors: c.errors.Load(), Misses: c.misses.Load(),
+		Latency: time.Duration(c.latency.Load()),
 	}
 }
 
@@ -64,6 +68,14 @@ func (c *Counts) add(other Counts) {
 	c.Misses += other.Misses
 	c.Blocks += other.Blocks
 	c.Errors += other.Errors
+	c.Latency += other.Latency
+}
+
+func (c Counts) AverageLatency() string {
+	if c.Queries == 0 {
+		return "—"
+	}
+	return strconv.FormatFloat(float64(c.Latency)/float64(time.Millisecond)/float64(c.Queries), 'f', 2, 64) + " ms"
 }
 
 func (c Counts) CacheHitRate() string {

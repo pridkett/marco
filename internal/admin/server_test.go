@@ -299,6 +299,64 @@ func TestRoutesReadyAuthAndRenderedViews(t *testing.T) {
 	checkContent(t, testUpstream, "Upstream test completed", "reachable")
 }
 
+func TestDashboardBlockingControls(t *testing.T) {
+	var pause contract.BlockingPause
+	f := setupWithHooks(t, func(h *Hooks) {
+		h.Blocking = func(now time.Time) contract.BlockingPause { return pause.At(now) }
+		h.SetBlocking = func(_ context.Context, account string, next contract.BlockingPause) error {
+			if account != "local:operator" {
+				t.Fatalf("unexpected actor %q", account)
+			}
+			pause = next
+			return nil
+		}
+	})
+	if w := request(f.handler, http.MethodGet, "/blocking", nil); w.Code != http.StatusSeeOther {
+		t.Fatalf("unauthenticated blocking status returned %d", w.Code)
+	}
+	f.login(t)
+	checkContent(t, request(f.handler, http.MethodGet, "/", nil, f.cookie),
+		"Blocking active", "Pause blocking", "Top clients", "Top queried domains", "Top blocked domains", "Indefinite")
+
+	change := func(token, duration string, status int) *httptest.ResponseRecorder {
+		t.Helper()
+		w := request(f.handler, http.MethodPost, "/blocking?range=1+hour", url.Values{
+			"csrf": {token}, "duration": {duration},
+		}, f.cookie)
+		if w.Code != status {
+			t.Fatalf("duration %q returned %d, want %d", duration, w.Code, status)
+		}
+		return w
+	}
+	change("", "1m", http.StatusForbidden)
+	change(f.csrf, "2m", http.StatusBadRequest)
+	if pause.Paused {
+		t.Fatal("rejected form changed the pause")
+	}
+	before := time.Now()
+	w := change(f.csrf, "1m", http.StatusSeeOther)
+	if !pause.Paused || pause.Until.Before(before.Add(time.Minute)) || pause.Until.After(time.Now().Add(time.Minute)) ||
+		w.Header().Get("Location") != "/?range=1+hour" {
+		t.Fatalf("unexpected timed pause %+v, redirect %q", pause, w.Header().Get("Location"))
+	}
+	w = request(f.handler, http.MethodGet, "/blocking", nil, f.cookie)
+	var status blockingStatus
+	if err := json.Unmarshal(w.Body.Bytes(), &status); err != nil || w.Code != http.StatusOK || !status.Paused ||
+		!status.Until.Equal(pause.Until) || status.RemainingSeconds <= 0 || status.RemainingSeconds > 60 {
+		t.Fatalf("unexpected status HTTP %d: %s", w.Code, w.Body)
+	}
+	checkContent(t, request(f.handler, http.MethodGet, "/?range=1+hour", nil, f.cookie),
+		"Blocking paused", "Resumes at", "Resume blocking")
+	change(f.csrf, "indefinite", http.StatusSeeOther)
+	if !pause.Paused || !pause.Until.IsZero() {
+		t.Fatalf("unexpected indefinite pause %+v", pause)
+	}
+	change(f.csrf, "resume", http.StatusSeeOther)
+	if pause.Paused {
+		t.Fatal("resume did not restore blocking")
+	}
+}
+
 func TestDevicesSortAndDisplay(t *testing.T) {
 	f := setup(t)
 	cam := f.state.Devices["cam-01"]
