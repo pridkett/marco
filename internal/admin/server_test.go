@@ -19,6 +19,7 @@ import (
 	"github.com/pridkett/marco/internal/auth"
 	"github.com/pridkett/marco/internal/config"
 	"github.com/pridkett/marco/internal/contract"
+	"github.com/pridkett/marco/internal/filter"
 	"github.com/pridkett/marco/internal/querylog"
 )
 
@@ -60,6 +61,11 @@ type fixture struct {
 }
 
 func setup(t *testing.T) *fixture {
+	t.Helper()
+	return setupWithHooks(t, nil)
+}
+
+func setupWithHooks(t *testing.T, configure func(*Hooks)) *fixture {
 	t.Helper()
 	db, err := sql.Open("sqlite", filepath.Join(t.TempDir(), "admin.sqlite"))
 	if err != nil {
@@ -123,7 +129,7 @@ func setup(t *testing.T) *fixture {
 		},
 	}}
 	selection := contract.Selection{Group: "IoT", Device: "cam-01", Confidence: "confirmed", Precedence: "device", Seen: now, Policy: desired.Groups["IoT"]}
-	fixture.handler = New(manager, history, Hooks{
+	hooks := Hooks{
 		Snapshot: func() config.State { return fixture.state },
 		Revision: func() uint64 { return fixture.state.Revision },
 		Ready:    func() bool { return true },
@@ -159,7 +165,11 @@ func setup(t *testing.T) *fixture {
 			fixture.state.Revision++
 			return fixture.state.Revision, nil
 		},
-	})
+	}
+	if configure != nil {
+		configure(&hooks)
+	}
+	fixture.handler = New(manager, history, hooks)
 	return fixture
 }
 
@@ -359,5 +369,45 @@ func TestAddDefaultsAndAssignDeviceGroup(t *testing.T) {
 	}
 	if _, duplicate := f.state.Desired.Subscriptions["adguard-filters-2"]; duplicate {
 		t.Fatal("already configured AdAway URL was duplicated")
+	}
+}
+
+func TestServiceCatalogBrowsing(t *testing.T) {
+	catalog, err := config.LoadServiceCatalog("../../catalog/services.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	matcher, err := filter.CompileService(catalog.Definitions()["amazon"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := setupWithHooks(t, func(hooks *Hooks) {
+		hooks.Catalog = catalog
+		hooks.MatchService = func(id, name string, qtype uint16) filter.Match {
+			if id != "amazon" {
+				t.Errorf("tested the wrong service %s", id)
+			}
+			return matcher.Match(name, qtype)
+		}
+	})
+	if icon := request(f.handler, http.MethodGet, "/services/icons/amazon", nil); icon.Code != http.StatusSeeOther {
+		t.Fatalf("unauthenticated service image returned %d", icon.Code)
+	}
+	f.login(t)
+	index := request(f.handler, http.MethodGet, "/services?search=youtube", nil, f.cookie)
+	checkContent(t, index, "YouTube", "1 of 142 services", "/services/icons/youtube")
+	detail := request(f.handler, http.MethodGet, "/services?id=amazon&host=s3.amazonaws.com&type=CNAME", nil, f.cookie)
+	checkContent(t, detail, "Except CNAME queries", "No match for s3.amazonaws.com. CNAME", "awsdns-*.org")
+	detail = request(f.handler, http.MethodGet, "/services?id=amazon&host=s3.amazonaws.com&type=A", nil, f.cookie)
+	checkContent(t, detail, "s3.amazonaws.com. A matches", "amazonaws.com^$dnstype=~CNAME")
+	filtered := request(f.handler, http.MethodGet, "/services?id=amazon&rule=except+cname", nil, f.cookie)
+	checkContent(t, filtered, "1 of 201 rules", "Except CNAME queries")
+	if strings.Contains(filtered.Body.String(), "awsdns-*.org") {
+		t.Fatal("rule text filter retained an unrelated row")
+	}
+	icon := request(f.handler, http.MethodGet, "/services/icons/amazon", nil, f.cookie)
+	if icon.Code != http.StatusOK || icon.Header().Get("Content-Type") != "image/svg+xml" ||
+		!strings.Contains(icon.Header().Get("Content-Security-Policy"), "sandbox") || !strings.HasPrefix(icon.Body.String(), "<svg") {
+		t.Fatal("service image was unavailable or served without isolation")
 	}
 }

@@ -1,0 +1,75 @@
+{{define "service-image"}}
+{{if .HasIcon}}<span class="service-icon"><img src="/services/icons/{{.ID}}" width="38" height="38" alt="" loading="lazy"></span>{{end}}
+{{end}}
+
+{{define "services"}}
+{{with .Services.Detail}}
+<p><a href="/services">Back to the service catalog</a></p>
+<section class="panel section service-profile">
+  {{template "service-image" .}}
+  <div>
+    <p>{{.Category}} · {{.Count}} {{if eq .Count 1}}rule{{else}}rules{{end}}{{if .Custom}} · Custom rules{{end}}</p>
+    <p class="muted">Policy ID <code>{{.ID}}</code></p>
+    <details><summary>Rule version</summary><code class="service-version">{{.Version}}</code></details>
+  </div>
+</section>
+<section class="panel section">
+  <h2>Test a hostname</h2>
+  <form class="toolbar service-toolbar" action="/services" method="get">
+    <input type="hidden" name="id" value="{{.ID}}">
+    {{with $.Services.RuleSearch}}<input type="hidden" name="rule" value="{{.}}">{{end}}
+    <label>Hostname <input name="host" maxlength="254" value="{{$.Services.Host}}" required></label>
+    <label>Record type <select name="type">
+      {{range $.Services.Types}}<option{{if eq . $.Services.Type}} selected{{end}}>{{.}}</option>{{end}}
+    </select></label>
+    <button type="submit" class="button primary">Test hostname</button>
+  </form>
+  {{with $.Services.Error}}<p class="message error" role="alert">{{.}}</p>{{end}}
+  {{with $.Services.Result}}<p class="message" role="status">{{.}}</p>{{end}}
+  <p class="muted">A service match is one part of a DNS decision. Use <a href="/policies">Policies</a> to test the rules that apply to a specific client.</p>
+</section>
+<form class="toolbar panel section service-toolbar" action="/services" method="get">
+  <input type="hidden" name="id" value="{{.ID}}">
+  {{if $.Services.Host}}
+  <input type="hidden" name="host" value="{{$.Services.Host}}">
+  <input type="hidden" name="type" value="{{$.Services.Type}}">
+  {{end}}
+  <label>Filter rules <input type="search" name="rule" value="{{$.Services.RuleSearch}}"></label>
+  <button type="submit" class="button">Filter rules</button>
+  {{if $.Services.RuleSearch}}<span class="muted">{{len $.Services.Rules}} of {{.Count}} rules</span>{{end}}
+</form>
+<div class="panel table-box" role="region" aria-label="Service rules" tabindex="0">
+  <table>
+    <thead><tr><th scope="col">Rule</th><th scope="col">What it matches</th><th scope="col">Condition</th></tr></thead>
+    <tbody>{{range $.Services.Rules}}<tr><th scope="row"><code class="service-version">{{.Text}}</code></th>
+      <td>{{.Scope}}</td><td>{{label .Condition}}</td></tr>
+      {{else}}<tr><td colspan="3" class="empty">No rules match this filter.</td></tr>{{end}}</tbody>
+  </table>
+</div>
+{{else}}
+{{if not .Feedback.Error}}
+<form class="toolbar panel section service-toolbar" action="/services" method="get">
+  <label>Search services <input type="search" name="search" value="{{.Services.Search}}"></label>
+  <label>Category <select name="category">
+    <option value="">All categories</option>
+    {{range .Services.Categories}}<option{{if eq . $.Services.Category}} selected{{end}}>{{.}}</option>{{end}}
+  </select></label>
+  <button type="submit" class="button primary">Filter services</button>
+  {{if or .Services.Search .Services.Category}}<a href="/services">Clear filters</a>{{end}}
+</form>
+{{if .Services.Cards}}
+<p class="muted">{{len .Services.Cards}} of {{.Services.Total}} services</p>
+<ul class="service-grid">
+  {{range .Services.Cards}}<li><a class="panel service-card" href="/services?id={{.ID}}">
+    {{template "service-image" .}}
+    <span><strong>{{.Name}}</strong><span class="secondary">{{.Category}} · {{.Count}} {{if eq .Count 1}}rule{{else}}rules{{end}}</span></span>
+  </a></li>{{end}}
+</ul>
+{{else if .Services.Total}}
+<p>No services match these filters.</p>
+{{else}}
+<p>Choose a <code>serviceCatalog</code> file in the deployment settings or add a custom service under <a href="/policies">Policies</a>.</p>
+{{end}}
+{{end}}
+{{end}}
+{{end}}

@@ -35,6 +35,7 @@ type page struct {
 	DeviceID, DeviceGroup      string
 	NewDevice                  bool
 	Subscriptions              []sourceRow
+	Services                   servicePage
 	AliasStatus                map[string]string
 	EditText, PoolText         string
 	History                    querylog.Page
@@ -145,6 +146,8 @@ func (s *server) page(w http.ResponseWriter, r *http.Request, session auth.Sessi
 		}
 	case "/policies":
 		p.EditText = pretty(policyConfig(state.Desired))
+	case "/services":
+		status = s.servicePage(&p, r, state.Desired)
 	case "/blocklists":
 		p.Subscriptions = sourceRows(state)
 		p.EditText = prettyObject(state.Desired.Subscriptions)

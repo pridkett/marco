@@ -21,7 +21,7 @@ Use arm64 on 64-bit Raspberry Pi OS and ARMv7 on 32-bit Raspberry Pi OS. Run `sc
 
 ## Start an instance
 
-Copy the two example JSON files and the bundled `lists/` directory into a private deployment directory. Relative paths resolve from the deployment file. Set `node`, choose `dns.listen` and `dns.allow`, and replace the example upstream address and TLS verification name in the desired configuration. The loopback settings are suitable for a first smoke test. Add the actual LAN bindings and IPv4/IPv6 client CIDRs for LAN service.
+Copy the two example JSON files, `examples/lists/`, and `catalog/` into a private deployment directory. Relative paths resolve from the deployment file. Set `node`, choose `dns.listen` and `dns.allow`, and replace the example upstream address and TLS verification name in the desired configuration. The loopback settings are suitable for a first smoke test. Add the actual LAN bindings and IPv4/IPv6 client CIDRs for LAN service.
 
 The sample administrator username is `admin`. Set `MARCO_ADMIN_PASSWORD` in Marco’s environment to sign in with that password. Set `MARCO_ADMIN_USERNAME` to choose a different username.
 
@@ -55,6 +55,7 @@ The deployment file contains startup settings. Marco seeds its database from `in
 - New instances use AdGuard Home’s starter selection. AdGuard DNS filter is enabled and AdAway Default Blocklist is available but disabled. An existing instance can add the missing subscriptions from **Blocklists → Add AdGuard Home defaults**. The sample config also includes a local demo list. A file source uses a path relative to the deployment’s `listDirectory`, which can be mounted read-only. Marco stages each newly enabled list until a usable artifact arrives and retains the last successful artifact through failed refreshes. [AdGuard Home starter configuration](https://github.com/AdguardTeam/AdGuardHome/blob/v1.0.0/internal/home/config.go#L324-L339)
 - The filtered default applies all enabled lists that have loaded. Set a group or device policy’s `subscriptions` to a list of source IDs to replace the inherited selection, or use `[]` to select zero. From the example binding, run `dig @127.0.0.1 -p 1053 ads.demo.test` after `demo-local` shows Active. The expected result is NXDOMAIN.
 - Assign a device from **Devices → Edit → Device group**. The starter groups are `infrastructure`, `mobile`, `iot`, `trusted`, and `other`. They inherit the default policy until edited. Existing instances can add missing groups under **Policies → Add default groups**.
+- Open **Services** to browse the AdGuard Home catalog by category, inspect a service’s hostname rules, and test a hostname and record type. Use the service's policy ID in a filtered group or device’s `services` selection. [Service catalog configuration](docs/operations.md#service-catalog)
 - Use the console’s policy test to see source selection and matching rules. Query history defaults to seven days and 128 MiB. Set `history.enabled` to false for counters only. Set `history.anonymize` and provision `history.anonymizationKey` to pseudonymize client IPs in new history. Use a high-entropy key of at least 16 bytes.
 - Use `/livez` and `/readyz` on the admin port for process and DNS bind health. Review the authenticated Overview and Settings for dependency status.
 

@@ -68,6 +68,7 @@
   {{if eq .Path "/devices/edit"}}{{template "device-edit" .}}{{end}}
   {{if eq .Path "/local-dns"}}{{template "local" .}}{{end}}
   {{if eq .Path "/policies"}}{{template "policies" .}}{{end}}
+  {{if eq .Path "/services"}}{{template "services" .}}{{end}}
   {{if eq .Path "/blocklists"}}{{template "blocklists" .}}{{end}}
   {{if eq .Path "/query-log"}}{{template "history" .}}{{end}}
   {{if eq .Path "/settings"}}{{template "settings" .}}{{end}}
@@ -253,7 +254,7 @@
   </section>
   <section class="panel section">
     <h2>Blocked services</h2>
-    <dl class="facts">{{range $id, $service := .Desired.Services}}<div><dt>{{$id}}</dt><dd>{{$service.Version}} · {{len $service.Domains}} rules</dd></div>{{else}}<p class="muted">No service groups configured.</p>{{end}}</dl>
+    <p><a href="/services">Browse the service catalog and test hostnames</a></p>
   </section>
 </div>
 {{template "probe" .}}

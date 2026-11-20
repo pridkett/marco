@@ -27,6 +27,7 @@ import (
 	"github.com/pridkett/marco/internal/filter"
 	"github.com/pridkett/marco/internal/inventory"
 	"github.com/pridkett/marco/internal/localdns"
+	"github.com/pridkett/marco/internal/policy"
 	"github.com/pridkett/marco/internal/querylog"
 	"github.com/pridkett/marco/internal/runtime"
 	"github.com/pridkett/marco/internal/store"
@@ -120,7 +121,10 @@ func serve(ctx context.Context, d config.Deployment) error {
 			authNote = err.Error()
 			slog.Warn("admin sign-in degraded", "error", err)
 		}
-		hooks := admin.Hooks{Snapshot: p.Snapshot, Update: p.Update, Ready: ready, Revision: p.Revision, Refresh: lists.Trigger}
+		hooks := admin.Hooks{Catalog: d.Catalog, Snapshot: p.Snapshot, Update: p.Update, Ready: ready, Revision: p.Revision, Refresh: lists.Trigger}
+		hooks.MatchService = func(id, name string, qtype uint16) filter.Match {
+			return p.View().Policies.(*policy.Engine).ServiceMatch(id, name, qtype)
+		}
 		hooks.Preview = func(in contract.Input) (contract.Selection, contract.Result) {
 			if !admitted(d.DNS.Allow, in.Peer) {
 				return contract.Selection{}, contract.Result{RCode: dns.RcodeRefused, Reason: "source-not-admitted", Origin: "policy"}

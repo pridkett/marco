@@ -15,6 +15,7 @@ group in the ID token’s `groups` claim.
 | `/devices/edit?id=<id>` | Edit an observed or manual device’s settings. Use `?new=1` to add a manual device |
 | `/local-dns` | Zones, aliases, records, reverse ranges and exclusions |
 | `/policies` | Default policies, groups, address assignments, service groups and dry-run decisions |
+| `/services` | Service categories, hostname rule details, and per-service matching tests |
 | `/blocklists` | Subscription settings, artifact health, enable or disable, manual refresh and dry-run decisions |
 | `/query-log` | Query history filtered by client, name, outcome and UTC time |
 | `/settings` | Upstream pools, endpoint tests, portable configuration and instance status |

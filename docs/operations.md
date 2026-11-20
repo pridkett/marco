@@ -61,6 +61,12 @@ For example, merge these fields into the `unifi` section of `marco.json` and rep
 
 Use `caFile` for a private CA. A manual `A` or `AAAA` record also works when the OS resolver queries Marco for that hostname. Marco publishes manual records before starting UniFi discovery.
 
+## Service catalog
+
+Marco’s default catalog is stored in `catalog/services.json` alongside its source and license information. The Linux packages include this file next to the binary. Marco looks for the catalog next to `marco.json`, next to the executable, and under the working directory. Set `serviceCatalog` in `marco.json` to choose a file explicitly. Restart Marco after updating the resource. Keep the same catalog alongside exported settings when moving a configuration that selects its service IDs.
+
+Open **Services** in the console to filter by category or search by name. Each detail page shows the original rules, their hostname scope and exceptions, and a hostname test that uses the same service matcher as DNS. Marco serves the logos locally from the catalog. In **Policies**, use the displayed ID in the `services` list for a filtered policy, for example `"services": ["youtube", "discord"]`. Services are available for selection by default. An entry in the desired configuration’s `services` map can define a custom service or override the catalog entry with the same ID.
+
 ## Offline migration
 
 Run with sanitized copies. To create a consistent PowerDNS backup, use SQLite's `.backup` command against the legacy database. Keep that copy separate from the running legacy service.

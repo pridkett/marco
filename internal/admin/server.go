@@ -18,6 +18,7 @@ import (
 	"github.com/pridkett/marco/internal/auth"
 	"github.com/pridkett/marco/internal/config"
 	"github.com/pridkett/marco/internal/contract"
+	"github.com/pridkett/marco/internal/filter"
 	"github.com/pridkett/marco/internal/querylog"
 )
 
@@ -38,6 +39,8 @@ var views = template.Must(template.New("").Funcs(template.FuncMap{
 }).ParseFS(assets, "assets/*.html"))
 
 type Hooks struct {
+	Catalog      *config.ServiceCatalog
+	MatchService func(string, string, uint16) filter.Match
 	Snapshot     func() config.State
 	Update       contract.Update
 	Status       func() any
@@ -61,7 +64,7 @@ type server struct {
 
 var navigation = []navItem{
 	{"Overview", "/"}, {"Devices", "/devices"}, {"Local DNS", "/local-dns"},
-	{"Policies", "/policies"}, {"Blocklists", "/blocklists"}, {"Query log", "/query-log"},
+	{"Policies", "/policies"}, {"Services", "/services"}, {"Blocklists", "/blocklists"}, {"Query log", "/query-log"},
 	{"Settings", "/settings"},
 }
 
@@ -108,6 +111,7 @@ func New(authentication *auth.Manager, history *querylog.Log, hooks Hooks) http.
 		s.page(w, r, session, "/devices/edit", http.StatusOK, feedback{})
 	}))
 	mux.HandleFunc("GET /settings/export", s.protected(s.export))
+	mux.HandleFunc("GET /services/icons/{id}", s.protected(s.serviceIcon))
 	for _, edit := range []struct{ path, page, operation string }{
 		{"/devices/edit", "/devices/edit", "edit-device"},
 		{"/local-dns", "/local-dns", "edit-local-dns"},
@@ -156,7 +160,7 @@ func (s *server) secure(next http.HandlerFunc) http.HandlerFunc {
 		// admin page URLs to the identity provider.
 		w.Header().Set("Referrer-Policy", "same-origin")
 		w.Header().Set("X-Frame-Options", "DENY")
-		w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self' https:")
+		w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'self'; img-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self' https:")
 		if s.auth == nil {
 			http.Error(w, "Admin sign-in is unavailable. Check the Marco startup log for details.", http.StatusServiceUnavailable)
 			return
