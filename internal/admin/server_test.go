@@ -412,24 +412,25 @@ func TestServiceCatalogBrowsing(t *testing.T) {
 		t.Fatalf("unauthenticated service image returned %d", icon.Code)
 	}
 	f.login(t)
-	firstPage := request(f.handler, http.MethodGet, "/services", nil, f.cookie)
-	checkContent(t, firstPage, "Showing 1–24 of 142 services", `href="/services?page=2" rel="next"`)
-	if count := strings.Count(firstPage.Body.String(), `class="panel service-card"`); count != 24 {
-		t.Fatalf("first page rendered %d service cards", count)
+	catalogPage := request(f.handler, http.MethodGet, "/services", nil, f.cookie)
+	checkContent(t, catalogPage, "142 services", `href="/services?id=youtube"`)
+	if count := strings.Count(catalogPage.Body.String(), `class="panel service-card"`); count != 142 {
+		t.Fatalf("catalog rendered %d service cards", count)
 	}
-	streaming := request(f.handler, http.MethodGet, "/services?category=Streaming", nil, f.cookie)
-	checkContent(t, streaming, "Showing 1–24 of 41 services", `href="/services?category=Streaming&amp;page=2" rel="next"`)
-	lastPage := request(f.handler, http.MethodGet, "/services?category=Streaming&page=1000", nil, f.cookie)
-	checkContent(t, lastPage, "Showing 25–41 of 41 services", `href="/services?category=Streaming" rel="prev"`,
-		`href="/services?category=Streaming&amp;id=youtube&amp;page=2"`)
-	if strings.Contains(lastPage.Body.String(), `rel="next"`) {
-		t.Fatal("last page offered a next page")
+	if body := catalogPage.Body.String(); strings.Contains(body, `rel="next"`) ||
+		strings.Contains(body, `<span class="muted">Revision `) {
+		t.Fatal("catalog displayed pagination or the DNS revision badge")
 	}
-	youtube := request(f.handler, http.MethodGet, "/services?category=Streaming&id=youtube&page=2", nil, f.cookie)
-	checkContent(t, youtube, `href="/services?category=Streaming&amp;page=2"`, `name="page" value="2"`)
+	streaming := request(f.handler, http.MethodGet, "/services?category=Streaming&page=2", nil, f.cookie)
+	checkContent(t, streaming, "41 services", `href="/services?category=Streaming&amp;id=youtube"`)
+	if count := strings.Count(streaming.Body.String(), `class="panel service-card"`); count != 41 {
+		t.Fatalf("filtered catalog rendered %d service cards", count)
+	}
+	youtube := request(f.handler, http.MethodGet, "/services?category=Streaming&id=youtube", nil, f.cookie)
+	checkContent(t, youtube, `href="/services?category=Streaming"`, `name="category" value="Streaming"`)
 	index := request(f.handler, http.MethodGet, "/services?search=youtube", nil, f.cookie)
-	checkContent(t, index, "YouTube", "1 matching service", "/services/icons/youtube", `href="/services?id=youtube&amp;search=youtube"`)
-	noMatches := request(f.handler, http.MethodGet, "/services?search=some-unmatched-service&page=2", nil, f.cookie)
+	checkContent(t, index, "YouTube", "1 service</p>", "/services/icons/youtube", `href="/services?id=youtube&amp;search=youtube"`)
+	noMatches := request(f.handler, http.MethodGet, "/services?search=some-unmatched-service", nil, f.cookie)
 	checkContent(t, noMatches, "No services match these filters.")
 	detail := request(f.handler, http.MethodGet, "/services?id=amazon&host=s3.amazonaws.com&type=CNAME", nil, f.cookie)
 	checkContent(t, detail, "Except CNAME queries", "No match for s3.amazonaws.com. CNAME", "awsdns-*.org")

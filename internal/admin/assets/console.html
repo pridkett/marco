@@ -58,7 +58,7 @@
 <main id="content" class="shell main-content" tabindex="-1">
   <div class="page-title">
     <h1>{{.Title}}</h1>
-    <span class="muted">Revision {{.Revision}}</span>
+    {{if ne .Path "/services"}}<span class="muted">Revision {{.Revision}}</span>{{end}}
   </div>
   {{with .Feedback.Error}}<p class="message error" role="alert">{{.}}</p>{{end}}
   {{with .Feedback.Message}}<p class="message success" role="status">{{.}}</p>{{end}}

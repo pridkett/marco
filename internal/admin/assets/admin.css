@@ -207,7 +207,6 @@ tr:last-child > td, tr:last-child > th { border-bottom: 0; }
 
 .service-filters .service-search { flex: 1 1 14rem; }
 .service-count { margin-block: 1.35rem 0.65rem; font-size: 0.9rem; }
-.service-pagination { display: flex; justify-content: flex-end; gap: 0.5rem; }
 
 @media (max-width: 38rem) {
   .service-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.55rem; }
