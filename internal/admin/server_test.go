@@ -24,6 +24,19 @@ import (
 
 type testDB struct{ db *sql.DB }
 
+func TestUnavailableAuthenticationReturnsServiceUnavailable(t *testing.T) {
+	handler := New(nil, nil, Hooks{Ready: func() bool { return true }})
+	for _, path := range []string{"/", "/login"} {
+		response := request(handler, http.MethodGet, path, nil)
+		if response.Code != http.StatusServiceUnavailable || !strings.Contains(response.Body.String(), "Admin sign-in is unavailable") {
+			t.Fatalf("%s returned HTTP %d with %q", path, response.Code, response.Body.String())
+		}
+	}
+	if response := request(handler, http.MethodGet, "/readyz", nil); response.Code != http.StatusOK {
+		t.Fatalf("DNS readiness returned HTTP %d", response.Code)
+	}
+}
+
 func (s testDB) DB() *sql.DB { return s.db }
 func (s testDB) Write(ctx context.Context, fn func(*sql.Tx) error) error {
 	tx, err := s.db.BeginTx(ctx, nil)

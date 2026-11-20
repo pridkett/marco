@@ -23,11 +23,16 @@ Use arm64 on 64-bit Raspberry Pi OS and ARMv7 on 32-bit Raspberry Pi OS. Run `sc
 
 Copy the two example JSON files and the bundled `lists/` directory into a private deployment directory. Relative paths resolve from the deployment file. Set `node`, choose `dns.listen` and `dns.allow`, and replace the example upstream address and TLS verification name in the desired configuration. The loopback settings are suitable for a first smoke test. Add the actual LAN bindings and IPv4/IPv6 client CIDRs for LAN service.
 
-Provision the local account and an HTTPS certificate for the admin URL. The following certificate is suitable for a local smoke test. Trust its certificate in your browser if testing the console. Use a certificate valid for your configured admin host in deployment.
+Run the password command separately. Enter the same password at both prompts and use at least 12 bytes. Confirm that the command created `operator.hash` before starting Marco.
 
 ```sh
 umask 077
 marco password --out operator.hash
+```
+
+Create a temporary HTTPS certificate for the local smoke test. Trust it in your browser to test the console. Use a certificate valid for your configured admin host in deployment.
+
+```sh
 openssl req -x509 -newkey rsa:2048 -nodes -days 30 -subj /CN=localhost \
   -addext subjectAltName=DNS:localhost -keyout admin-key.pem -out admin-cert.pem
 marco validate --config marco.json

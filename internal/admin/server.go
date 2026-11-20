@@ -157,7 +157,11 @@ func (s *server) secure(next http.HandlerFunc) http.HandlerFunc {
 		w.Header().Set("Referrer-Policy", "same-origin")
 		w.Header().Set("X-Frame-Options", "DENY")
 		w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self' https:")
-		if s.auth == nil || !s.auth.Secure(r) {
+		if s.auth == nil {
+			http.Error(w, "Admin sign-in is unavailable. Check the Marco startup log for details.", http.StatusServiceUnavailable)
+			return
+		}
+		if !s.auth.Secure(r) {
 			http.Error(w, "Use the configured HTTPS admin URL.", http.StatusBadRequest)
 			return
 		}
