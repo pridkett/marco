@@ -133,7 +133,6 @@ table { width: 100%; border-collapse: collapse; font-size: .88rem; text-align: s
 .device-icon img { max-width: 100%; max-height: 100%; }
 .records-table { min-width: 32rem; }
 .subscriptions-table { min-width: 48rem; }
-.history-table { min-width: 58rem; }
 th, td { text-align: start; vertical-align: top; padding: .63rem .78rem; border-bottom: 1px solid var(--border); }
 th { font-weight: 625; }
 thead th { background: var(--faint); white-space: nowrap; }
@@ -145,9 +144,24 @@ tr:last-child > td, tr:last-child > th { border-bottom: 0; }
 .time { white-space: nowrap; font-variant-numeric: tabular-nums; }
 .empty { padding: 1.3rem; text-align: center; color: var(--muted); }
 
-.query-outcome { display: flex; flex-wrap: wrap; align-items: center; gap: .25rem .5rem; margin-bottom: .2rem; }
+.history-table { min-width: 45rem; table-layout: fixed; line-height: 1.25; }
+.history-table th, .history-table td { padding: .38rem .65rem; }
+.history-table .empty { padding: 1.3rem; }
+.history-table .query-date { background: var(--faint); color: var(--muted); font-variant-numeric: tabular-nums; }
+.query-time, .query-latency { width: 6rem; }
+.query-client { width: clamp(9rem, 22vw, 16rem); }
+.query-type { width: 5rem; }
+.query-status { width: 7rem; }
+.history-table .query-latency { text-align: end; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.query-host, .query-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.query-host { display: block; }
+.query-name { display: inline-block; max-width: calc(100% - 1.25em); vertical-align: bottom; }
+.query-detail[open] .query-name { white-space: normal; }
+.query-detail dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: .25rem .6rem; margin: .5rem 0 0; font-size: .82rem; font-weight: 400; }
+.query-detail dt { color: var(--muted); }
+.query-detail dd { margin: 0; }
 .query-badge { padding: .12rem .55rem; border-radius: 1rem; background: var(--faint); color: var(--muted); font-size: .82rem; font-weight: 650; white-space: nowrap; }
-.query-badge.local { background: var(--success-bg); color: var(--success); }
+.query-badge.local, .query-badge.allowed { background: var(--success-bg); color: var(--success); }
 .query-badge.cache { background: var(--query-cache-bg); color: var(--query-cache); }
 .query-badge.upstream { background: var(--accent-bg); color: var(--accent); }
 .query-badge.blocked { background: var(--query-blocked-bg); color: var(--query-blocked); }

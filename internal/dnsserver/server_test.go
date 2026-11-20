@@ -13,6 +13,7 @@ import (
 	"github.com/miekg/dns"
 	"github.com/pridkett/marco/internal/config"
 	"github.com/pridkett/marco/internal/contract"
+	"github.com/pridkett/marco/internal/policy"
 )
 
 type fixtureLocal map[string]contract.LocalResult
@@ -309,5 +310,43 @@ func TestPolicyChecksOnLocalAndCachedAnswers(t *testing.T) {
 	if blocked.Rcode != dns.RcodeNameError || len(blocked.IsEdns0().Option) != 1 ||
 		blocked.IsEdns0().Option[0].(*dns.EDNS0_EDE).InfoCode != dns.ExtendedErrorCodeBlocked {
 		t.Fatalf("expected EDE Blocked: %v", blocked)
+	}
+}
+
+func TestAdGuardExceptionAndBlockRecordDistinctOutcomes(t *testing.T) {
+	const sourceID = "adguard-filters-1"
+	const exception = "@@||js.monitor.azure.com^|"
+	source := config.Subscription{Enabled: true, Format: config.AdGuardFormat}
+	state := config.State{
+		Desired: config.Desired{Subscriptions: map[string]config.Subscription{sourceID: source}},
+		Artifacts: map[string]config.Artifact{sourceID: {
+			Source: source, Body: []byte("||monitor.azure.com^\n" + exception),
+		}},
+	}
+	policies, err := policy.Compile(&state, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	upstream := &fixtureUpstream{records: []dns.RR{rr(t, "js.monitor.azure.com. 60 IN A 192.0.2.4")}}
+	view := &contract.View{Policies: policies, Local: fixtureLocal{}, Upstream: upstream}
+	for _, tc := range []struct {
+		name, origin, reason, rule string
+		rcode                      int
+	}{
+		{"js.monitor.azure.com.", "upstream", "upstream-answer", sourceID + "/" + exception, dns.RcodeSuccess},
+		{"js.monitor.azure.com.", "cache", "upstream-answer", sourceID + "/" + exception, dns.RcodeSuccess},
+		{"other.monitor.azure.com.", "policy", "subscription-block", sourceID + "/monitor.azure.com.", dns.RcodeNameError},
+	} {
+		query := new(dns.Msg).SetQuestion(tc.name, dns.TypeA)
+		_, resolved := evaluate(t.Context(), view, contract.Input{
+			Name: tc.name, Type: dns.TypeA, Recursion: true,
+		}, query)
+		got := resolved.result
+		if got.Origin != tc.origin || got.Reason != tc.reason || got.Rule != tc.rule || got.RCode != tc.rcode {
+			t.Errorf("%s via %s: got %+v", tc.name, tc.origin, got)
+		}
+	}
+	if calls := upstream.calls.Load(); calls != 2 {
+		t.Errorf("got %d upstream lookups, want 2", calls)
 	}
 }
