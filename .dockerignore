@@ -1,0 +1,12 @@
+.git
+.github
+dist
+data
+*.db
+*.db-shm
+*.db-wal
+*.pem
+*.hash
+/marco
+/marco.json
+/marco.desired.json
