@@ -89,12 +89,21 @@ func setupWithHooks(t *testing.T, configure func(*Hooks)) *fixture {
 		t.Fatal(err)
 	}
 	now := time.Now()
+	midnight := now.UTC().Truncate(24 * time.Hour)
 	history.Observe(contract.Event{
 		Input: contract.Input{
-			Time: now.Add(-time.Minute), Name: "blocked.test.", Type: dns.TypeA, Peer: netip.MustParseAddr("192.0.2.2"),
+			Time: midnight.Add(-time.Second), Name: "blocked.test.", Type: dns.TypeA, Peer: netip.MustParseAddr("192.0.2.2"),
 		},
 		Result: contract.Result{Origin: "policy", RCode: dns.RcodeNameError, Reason: "subscription-block", Rule: "test"},
 		Node:   "fixture", Latency: time.Millisecond,
+	})
+	history.Observe(contract.Event{
+		Input: contract.Input{
+			Time: midnight, Name: "js.monitor.azure.com.", Type: dns.TypeHTTPS, Peer: netip.MustParseAddr("2001:db8::2"),
+		},
+		Result: contract.Result{Origin: "upstream", RCode: dns.RcodeSuccess, Reason: "upstream-answer", Cache: "miss",
+			Rule: "adguard-filters-1/@@||js.monitor.azure.com^|"},
+		Node: "fixture", Latency: 123 * time.Microsecond,
 	})
 	if err := history.Close(); err != nil {
 		t.Fatal(err)
@@ -146,7 +155,12 @@ func setupWithHooks(t *testing.T, configure func(*Hooks)) *fixture {
 			fixture.triggers++
 			return nil
 		},
-		Lookup:      func(string, uint16) contract.LocalResult { return contract.LocalResult{Found: true} },
+		Lookup: func(name string, qtype uint16) contract.LocalResult {
+			if name == "2.2.0.192.in-addr.arpa." && qtype == dns.TypePTR {
+				return contract.LocalResult{Found: true, Answer: []dns.RR{&dns.PTR{Ptr: "laptop.home.arpa."}}}
+			}
+			return contract.LocalResult{Found: true}
+		},
 		Published:   func(id string) bool { return id == "cam-01" },
 		LocalIssues: func() any { return []string{"test-collision"} },
 		Preview: func(in contract.Input) (contract.Selection, contract.Result) {
@@ -252,7 +266,7 @@ func TestRoutesReadyAuthAndRenderedViews(t *testing.T) {
 		{"/local-dns", []string{"console.home.arpa.", "Unresolved", "Private", "test-collision"}},
 		{"/policies", []string{"Client groups", "Test a DNS decision", "local-only"}},
 		{"/blocklists", []string{"fixture-digest", "Waiting for valid list", "Refresh fixture", "/blocklists/test"}},
-		{"/query-log?question=BLOCKED&outcome=NXDOMAIN", []string{"<h1>Query Log</h1>", "blocked.test.", `class="query-badge blocked">Blocked`, "NXDOMAIN", "subscription-block", "fixture", "192.0.2.2"}},
+		{"/query-log?question=BLOCKED&outcome=NXDOMAIN", []string{"<h1>Query Log</h1>", "blocked.test.", `class="query-badge blocked">Blocked`, "NXDOMAIN", "subscription-block", "192.0.2.2"}},
 		{"/settings", []string{"Test encrypted endpoints", "Import and export", "Instance status"}},
 	}
 	for _, tc := range cases {
@@ -316,6 +330,52 @@ func TestDevicesSortAndDisplay(t *testing.T) {
 	checkContent(t, page, "UniFi poll requested", `aria-sort="descending"`, `name="search" type="search" value="lab"`)
 	if !strings.Contains(page.Header().Get("Content-Security-Policy"), unifiArtworkOrigin) {
 		t.Fatal("poll response CSP does not allow UniFi artwork")
+	}
+}
+
+func TestQueryHistorySummaryAndDetails(t *testing.T) {
+	f := setup(t)
+	f.login(t)
+	response := request(f.handler, http.MethodGet, "/query-log", nil, f.cookie)
+	checkContent(t, response, `>Time (UTC)</th>`, `scope="rowgroup"`, `>00:00:00</time>`, `>23:59:59</time>`,
+		`>laptop.home.arpa</span><small class="secondary muted">192.0.2.2</small>`, `<td>2001:db8::2</td>`,
+		`class="query-badge allowed">Allowed`, `class="query-badge blocked">Blocked`, `>HTTPS</td>`,
+		`>1.00 ms</td>`, `>123 µs</td>`, `<details class="query-detail">`,
+		`<dt>Allow rule</dt><dd>adguard-filters-1/@@||js.monitor.azure.com^|</dd>`, `<dt>Source</dt><dd>upstream</dd>`,
+		`<dt>DNS response</dt><dd>NOERROR</dd>`, `<dt>Cache</dt><dd>miss</dd>`)
+	body := response.Body.String()
+	if strings.Count(body, `scope="rowgroup"`) != 2 || strings.Contains(body, `>Node</th>`) || strings.Contains(body, ">fixture</td>") {
+		t.Fatal("expected separate UTC dates and no node column")
+	}
+	for _, tc := range []struct{ outcome, want, excluded string }{
+		{"Allowed", "js.monitor.azure.com.", "blocked.test."},
+		{"Blocked", "blocked.test.", "js.monitor.azure.com."},
+	} {
+		filtered := request(f.handler, http.MethodGet, "/query-log?outcome="+tc.outcome, nil, f.cookie)
+		checkContent(t, filtered, tc.want)
+		if strings.Contains(filtered.Body.String(), tc.excluded) {
+			t.Errorf("%s filter included %s", tc.outcome, tc.excluded)
+		}
+	}
+}
+
+func TestQueryClientNameFromInventory(t *testing.T) {
+	ip := netip.MustParseAddr("2001:db8::1")
+	state := config.State{Devices: map[string]config.Device{"client": {
+		Canonical: "workstation",
+		Addresses: []config.Address{{IP: ip, Active: true}},
+	}}}
+	s := server{hooks: Hooks{Select: func(netip.Addr, time.Time) contract.Selection {
+		return contract.Selection{Device: "client", Precedence: "subnet", Confidence: "observed"}
+	}}}
+	for _, tc := range []struct{ client, want string }{
+		{ip.String(), "workstation"},
+		{"2001:db8::2", ""},
+		{"client-0123456789abcdef", ""},
+	} {
+		if got := s.queryClientName(tc.client, state, time.Now()); got != tc.want {
+			t.Errorf("client %q got hostname %q, want %q", tc.client, got, tc.want)
+		}
 	}
 }
 

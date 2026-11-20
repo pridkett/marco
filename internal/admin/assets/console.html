@@ -357,9 +357,9 @@
 {{if .Stats.Enabled}}
   {{with .Stats.Error}}<p class="message error" role="alert">{{.}}</p>{{end}}
   <form action="/query-log" method="get" class="toolbar">
-    <label>Client <input name="client" value="{{.HistoryClient}}"></label>
+    <label>Client <input name="client" placeholder="IP or client ID" value="{{.HistoryClient}}"></label>
     <label>Question <input name="question" type="search" value="{{.HistoryName}}"></label>
-    <label>Outcome <input name="outcome" placeholder="NXDOMAIN, local, …" value="{{.HistoryOutcome}}"></label>
+    <label>Outcome <input name="outcome" placeholder="Blocked, NXDOMAIN, …" value="{{.HistoryOutcome}}"></label>
     <label>From (UTC) <input name="after" type="datetime-local" value="{{.HistoryAfter}}"></label>
     <label>Until (UTC) <input name="until" type="datetime-local" value="{{.HistoryUntil}}"></label>
     <button type="submit" class="button">Filter queries</button>
@@ -367,26 +367,32 @@
   <p class="mobile-table-note muted" id="history-scroll-help">Scroll the table to see more columns.</p>
   <div class="panel table-box" role="region" aria-label="Query Log" aria-describedby="history-scroll-help" tabindex="0">
     <table class="history-table">
-      <thead><tr><th scope="col">Time (UTC)</th><th scope="col">Node</th><th scope="col">Client</th><th scope="col">Question</th><th scope="col">Type</th><th scope="col">Outcome</th><th scope="col">Rule</th><th scope="col">Cache</th><th scope="col">Latency</th></tr></thead>
-      <tbody>{{range .History.Entries}}
+      <thead><tr><th scope="col" class="query-time">Time (UTC)</th><th scope="col" class="query-client">Client</th><th scope="col">Question</th><th scope="col" class="query-type">Type</th><th scope="col" class="query-status">Outcome</th><th scope="col" class="query-latency">Latency</th></tr></thead>
+      {{range .History}}<tbody>
+        <tr><th scope="rowgroup" colspan="6" class="query-date"><time datetime="{{.Date}}">{{.Date}}</time></th></tr>
+        {{range .Rows}}
+        {{$badge := queryBadge .Entry}}
         <tr>
-          <td class="time">{{when .Time}}</td>
-          <td>{{label .Node}}</td>
-          <td>{{label .Client}}</td>
-          <th scope="row">{{label .Name}}</th>
+          <td class="time"><time datetime="{{.Time.UTC.Format "2006-01-02T15:04:05Z"}}">{{.Time.UTC.Format "15:04:05"}}</time></td>
+          <td>{{if .Hostname}}<span class="query-host" title="{{.Hostname}}">{{.Hostname}}</span><small class="secondary muted">{{.Client}}</small>{{else}}{{label .Client}}{{end}}</td>
+          <th scope="row" aria-labelledby="query-name-{{.ID}}">
+            <details class="query-detail">
+              <summary title="{{.Name}}"><span class="query-name" id="query-name-{{.ID}}">{{label .Name}}</span></summary>
+              <dl>
+                <dt>DNS response</dt><dd>{{.RCodeLabel}}</dd>
+                <dt>Source</dt><dd>{{label .Origin}}</dd>
+                {{with .Reason}}<dt>Reason</dt><dd>{{.}}</dd>{{end}}
+                {{with .Rule}}<dt>{{if eq $badge.Kind "allowed"}}Allow rule{{else}}Rule{{end}}</dt><dd>{{.}}</dd>{{end}}
+                {{with .Cache}}<dt>Cache</dt><dd>{{.}}</dd>{{end}}
+              </dl>
+            </details>
+          </th>
           <td>{{.TypeLabel}}</td>
-          <td>
-            <div class="query-outcome">
-              {{with queryBadge .}}<span class="query-badge {{.Kind}}">{{.Label}}</span>{{end}}
-              <span class="muted">{{.RCodeLabel}}</span>
-            </div>
-            {{with .Reason}}<span class="secondary">{{.}}</span>{{end}}
-          </td>
-          <td>{{label .Rule}}</td>
-          <td>{{label .Cache}}</td>
-          <td>{{.Latency}}</td>
+          <td><span class="query-badge {{$badge.Kind}}">{{$badge.Label}}</span></td>
+          <td class="query-latency">{{.LatencyLabel}}</td>
         </tr>
-        {{else}}<tr><td colspan="9" class="empty">No queries match these filters.</td></tr>{{end}}</tbody>
+        {{end}}
+      </tbody>{{else}}<tbody><tr><td colspan="6" class="empty">No queries match these filters.</td></tr></tbody>{{end}}
     </table>
   </div>
   <nav class="toolbar" aria-label="Query history pagination">

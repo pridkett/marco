@@ -41,7 +41,7 @@ type page struct {
 	Services                   servicePage
 	AliasStatus                map[string]string
 	EditText, PoolText         string
-	History                    querylog.Page
+	History                    []queryDay
 	HistoryClient, HistoryName string
 	HistoryOutcome             string
 	HistoryAfter, HistoryUntil string
@@ -160,7 +160,7 @@ func (s *server) page(w http.ResponseWriter, r *http.Request, session auth.Sessi
 		}
 	case "/query-log":
 		p.stats(s.history)
-		p.queryHistory(r, s.history)
+		s.queryHistory(&p, r, state, now)
 	case "/settings":
 		p.PoolText = prettyObject(state.Desired.Pools)
 		if f.Endpoints != "" {
@@ -354,12 +354,32 @@ type outcomeBadge struct {
 	Kind, Label string
 }
 
+type queryDay struct {
+	Date string
+	Rows []queryRow
+}
+
+type queryRow struct {
+	querylog.Entry
+	Hostname string
+}
+
+func (r queryRow) LatencyLabel() string {
+	if r.Latency < time.Millisecond {
+		return fmt.Sprintf("%d µs", r.Latency.Microseconds())
+	}
+	return fmt.Sprintf("%.2f ms", float64(r.Latency)/float64(time.Millisecond))
+}
+
 func queryBadge(entry querylog.Entry) outcomeBadge {
 	if entry.Origin == "policy" {
 		return outcomeBadge{"blocked", "Blocked"}
 	}
 	if entry.RCode != dns.RcodeSuccess && entry.RCode != dns.RcodeNameError {
 		return outcomeBadge{"error", "Error"}
+	}
+	if entry.AllowedByRule() {
+		return outcomeBadge{"allowed", "Allowed"}
 	}
 	switch entry.Origin {
 	case "local":
@@ -373,8 +393,8 @@ func queryBadge(entry querylog.Entry) outcomeBadge {
 	}
 }
 
-func (p *page) queryHistory(r *http.Request, l *querylog.Log) {
-	if l == nil || !p.Stats.Enabled {
+func (s *server) queryHistory(p *page, r *http.Request, state config.State, now time.Time) {
+	if s.history == nil || !p.Stats.Enabled {
 		return
 	}
 	q := r.URL.Query()
@@ -387,14 +407,27 @@ func (p *page) queryHistory(r *http.Request, l *querylog.Log) {
 		return
 	}
 	before, _ := strconv.ParseInt(q.Get("before"), 10, 64)
-	history, err := l.Search(r.Context(), querylog.Filter{
+	history, err := s.history.Search(r.Context(), querylog.Filter{
 		Client: p.HistoryClient, Question: p.HistoryName, Outcome: p.HistoryOutcome, After: after, Until: until, BeforeID: before,
 	})
 	if err != nil {
 		p.Feedback.Error = "Query history is temporarily unavailable."
 		return
 	}
-	p.History = history
+	hostnames := make(map[string]string)
+	for _, entry := range history.Entries {
+		date := entry.Time.UTC().Format(time.DateOnly)
+		if len(p.History) == 0 || p.History[len(p.History)-1].Date != date {
+			p.History = append(p.History, queryDay{Date: date})
+		}
+		hostname, ok := hostnames[entry.Client]
+		if !ok {
+			hostname = s.queryClientName(entry.Client, state, now)
+			hostnames[entry.Client] = hostname
+		}
+		day := &p.History[len(p.History)-1]
+		day.Rows = append(day.Rows, queryRow{entry, hostname})
+	}
 	params := url.Values{"client": {p.HistoryClient}, "question": {p.HistoryName},
 		"outcome": {p.HistoryOutcome}, "after": {p.HistoryAfter}, "until": {p.HistoryUntil}}
 	if before > 0 {
@@ -404,6 +437,44 @@ func (p *page) queryHistory(r *http.Request, l *querylog.Log) {
 		params.Set("before", strconv.FormatInt(history.Next, 10))
 		p.HistoryMore = "/query-log?" + params.Encode()
 	}
+}
+
+func (s *server) queryClientName(client string, state config.State, now time.Time) string {
+	ip, err := netip.ParseAddr(client)
+	if err != nil {
+		return ""
+	}
+	ip = ip.Unmap().WithZone("")
+	if s.hooks.Lookup != nil {
+		reverse, err := dns.ReverseAddr(ip.String())
+		if err == nil {
+			for _, record := range s.hooks.Lookup(reverse, dns.TypePTR).Answer {
+				if ptr, ok := record.(*dns.PTR); ok && ptr.Ptr != "." {
+					return strings.TrimSuffix(ptr.Ptr, ".")
+				}
+			}
+		}
+	}
+	if s.hooks.Select == nil {
+		return ""
+	}
+	selected := s.hooks.Select(ip, now)
+	if selected.Confidence != "observed" && selected.Precedence != "static" {
+		return ""
+	}
+	device := state.Devices[selected.Device]
+	// A subnet policy can name a device even when a different host sent the query.
+	if selected.Precedence == "subnet" && !slices.ContainsFunc(device.Addresses, func(address config.Address) bool {
+		return address.IP.Unmap() == ip && address.Active && !address.Conflicted && !address.Reassigned && !address.Superseded
+	}) {
+		return ""
+	}
+	for _, name := range []string{device.Canonical, device.Hostname, state.Desired.Devices[selected.Device].Name} {
+		if name != "" {
+			return strings.TrimSuffix(name, ".")
+		}
+	}
+	return ""
 }
 
 func formTime(value string) (time.Time, error) {

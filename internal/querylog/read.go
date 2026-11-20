@@ -153,6 +153,11 @@ func (e Entry) RCodeLabel() string {
 	return strconv.Itoa(e.RCode)
 }
 
+// Resolved entries only carry a rule reference when an allow rule matched.
+func (e Entry) AllowedByRule() bool {
+	return e.Rule != "" && (e.Origin == "local" || e.Origin == "cache" || e.Origin == "upstream")
+}
+
 type Page struct {
 	Entries []Entry
 	Next    int64
@@ -176,13 +181,26 @@ func (l *Log) Search(ctx context.Context, f Filter) (Page, error) {
 		clauses = append(clauses, "instr(name, ?) > 0")
 		args = append(args, strings.ToLower(f.Question))
 	}
-	if f.Outcome != "" {
-		rcode, found := dns.StringToRcode[strings.ToUpper(f.Outcome)]
+	switch outcome := strings.ToLower(strings.TrimSpace(f.Outcome)); outcome {
+	case "":
+	case "allowed":
+		clauses = append(clauses, "(rule <> '' AND origin IN ('local', 'cache', 'upstream') AND rcode IN (?, ?))")
+		args = append(args, dns.RcodeSuccess, dns.RcodeNameError)
+	default:
+		switch outcome {
+		case "blocked":
+			outcome = "policy"
+		case "cache hit":
+			outcome = "cache"
+		case "local dns":
+			outcome = "local"
+		}
+		rcode, found := dns.StringToRcode[strings.ToUpper(outcome)]
 		if !found {
 			rcode = -1
 		}
 		clauses = append(clauses, "(origin = ? OR reason = ? OR rcode = ?)")
-		args = append(args, f.Outcome, f.Outcome, rcode)
+		args = append(args, outcome, outcome, rcode)
 	}
 	if !f.Until.IsZero() {
 		clauses = append(clauses, "time < ?")
