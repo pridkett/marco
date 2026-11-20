@@ -2,9 +2,15 @@
 {{if .HasIcon}}<span class="service-icon"><img src="/services/icons/{{.ID}}" width="38" height="38" alt="" loading="lazy"></span>{{end}}
 {{end}}
 
+{{define "service-catalog-state"}}
+{{with .Search}}<input type="hidden" name="search" value="{{.}}">{{end}}
+{{with .Category}}<input type="hidden" name="category" value="{{.}}">{{end}}
+{{if gt .Number 1}}<input type="hidden" name="page" value="{{.Number}}">{{end}}
+{{end}}
+
 {{define "services"}}
 {{with .Services.Detail}}
-<p><a href="/services">Back to the service catalog</a></p>
+<p><a href="{{$.Services.Back}}">Back to the service catalog</a></p>
 <section class="panel section service-profile">
   {{template "service-image" .}}
   <div>
@@ -17,6 +23,7 @@
   <h2>Test a hostname</h2>
   <form class="toolbar service-toolbar" action="/services" method="get">
     <input type="hidden" name="id" value="{{.ID}}">
+    {{template "service-catalog-state" $.Services}}
     {{with $.Services.RuleSearch}}<input type="hidden" name="rule" value="{{.}}">{{end}}
     <label>Hostname <input name="host" maxlength="254" value="{{$.Services.Host}}" required></label>
     <label>Record type <select name="type">
@@ -30,6 +37,7 @@
 </section>
 <form class="toolbar panel section service-toolbar" action="/services" method="get">
   <input type="hidden" name="id" value="{{.ID}}">
+  {{template "service-catalog-state" $.Services}}
   {{if $.Services.Host}}
   <input type="hidden" name="host" value="{{$.Services.Host}}">
   <input type="hidden" name="type" value="{{$.Services.Type}}">
@@ -48,27 +56,40 @@
 </div>
 {{else}}
 {{if not .Feedback.Error}}
-<form class="toolbar panel section service-toolbar" action="/services" method="get">
-  <label>Search services <input type="search" name="search" value="{{.Services.Search}}"></label>
+{{with .Services}}
+<form class="toolbar panel section service-toolbar service-filters" action="/services" method="get">
+  <label class="service-search">Search services <input type="search" name="search" value="{{.Search}}"></label>
   <label>Category <select name="category">
     <option value="">All categories</option>
-    {{range .Services.Categories}}<option{{if eq . $.Services.Category}} selected{{end}}>{{.}}</option>{{end}}
+    {{range .Categories}}<option{{if eq . $.Services.Category}} selected{{end}}>{{.}}</option>{{end}}
   </select></label>
   <button type="submit" class="button primary">Filter services</button>
-  {{if or .Services.Search .Services.Category}}<a href="/services">Clear filters</a>{{end}}
+  {{if or .Search .Category}}<a class="button" href="/services">Clear filters</a>{{end}}
 </form>
-{{if .Services.Cards}}
-<p class="muted">{{len .Services.Cards}} of {{.Services.Total}} services</p>
-<ul class="service-grid">
-  {{range .Services.Cards}}<li><a class="panel service-card" href="/services?id={{.ID}}">
-    {{template "service-image" .}}
-    <span><strong>{{.Name}}</strong><span class="secondary">{{.Category}} · {{.Count}} {{if eq .Count 1}}rule{{else}}rules{{end}}</span></span>
-  </a></li>{{end}}
+{{if .Cards}}
+<p class="muted service-count">{{if eq .Matches 1}}1 matching service{{else}}Showing {{.First}}–{{.Last}} of {{.Matches}} services{{end}}</p>
+<ul class="service-grid" role="list">
+  {{range .Cards}}<li>
+    <a class="panel service-card" href="{{.URL}}">
+      {{template "service-image" .}}
+      <span class="service-card-text">
+        <strong>{{.Name}}</strong>
+        <span class="secondary">{{.Category}} · {{.Count}} {{if eq .Count 1}}rule{{else}}rules{{end}}</span>
+      </span>
+    </a>
+  </li>{{end}}
 </ul>
-{{else if .Services.Total}}
-<p>No services match these filters.</p>
+{{if or .Prev .Next}}
+<nav class="service-pagination" aria-label="Service catalog pages">
+  {{with .Prev}}<a class="button" href="{{.}}" rel="prev">Previous</a>{{end}}
+  {{with .Next}}<a class="button" href="{{.}}" rel="next">Next</a>{{end}}
+</nav>
+{{end}}
+{{else if .Total}}
+<p class="panel empty">No services match these filters.</p>
 {{else}}
 <p>Choose a <code>serviceCatalog</code> file in the deployment settings or add a custom service under <a href="/policies">Policies</a>.</p>
+{{end}}
 {{end}}
 {{end}}
 {{end}}

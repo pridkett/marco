@@ -2,6 +2,7 @@ package admin
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -269,9 +270,26 @@ func TestRoutesReadyAuthAndRenderedViews(t *testing.T) {
 	checkContent(t, probe, "test-rule", "REFUSED", "confirmed")
 	testUpstream := request(f.handler, "POST", "/settings/test-upstream", url.Values{"csrf": {f.csrf}, "pool": {"primary"}}, f.cookie)
 	checkContent(t, testUpstream, "Upstream test completed", "reachable")
-	css := request(f.handler, "GET", "/assets/admin.css", nil)
-	if css.Code != http.StatusOK || !strings.HasPrefix(css.Header().Get("Content-Type"), "text/css") {
-		t.Fatalf("missing embedded styles: %d", css.Code)
+}
+
+func TestConsoleStylesheetVersion(t *testing.T) {
+	f := setup(t)
+	css := request(f.handler, http.MethodGet, "/assets/admin.css", nil)
+	if css.Code != http.StatusOK || !strings.HasPrefix(css.Header().Get("Content-Type"), "text/css") ||
+		!strings.Contains(css.Body.String(), ".service-grid") {
+		t.Fatal("missing embedded admin stylesheet")
+	}
+	versionedPath := fmt.Sprintf("/assets/admin.css?v=%x", sha256.Sum256(css.Body.Bytes()))
+	login := request(f.handler, http.MethodGet, "/login", nil)
+	checkContent(t, login, `href="`+versionedPath+`"`)
+	versioned := request(f.handler, http.MethodGet, versionedPath, nil)
+	if versioned.Code != http.StatusOK || versioned.Body.String() != css.Body.String() ||
+		!strings.Contains(versioned.Header().Get("Cache-Control"), "immutable") {
+		t.Fatal("versioned stylesheet differs from embedded CSS or has the wrong cache policy")
+	}
+	stale := request(f.handler, http.MethodGet, "/assets/admin.css?v=previous", nil)
+	if css.Header().Get("Cache-Control") != "no-store" || stale.Header().Get("Cache-Control") != "no-store" {
+		t.Fatal("served cacheable CSS under an unversioned or stale URL")
 	}
 }
 
@@ -394,8 +412,25 @@ func TestServiceCatalogBrowsing(t *testing.T) {
 		t.Fatalf("unauthenticated service image returned %d", icon.Code)
 	}
 	f.login(t)
+	firstPage := request(f.handler, http.MethodGet, "/services", nil, f.cookie)
+	checkContent(t, firstPage, "Showing 1–24 of 142 services", `href="/services?page=2" rel="next"`)
+	if count := strings.Count(firstPage.Body.String(), `class="panel service-card"`); count != 24 {
+		t.Fatalf("first page rendered %d service cards", count)
+	}
+	streaming := request(f.handler, http.MethodGet, "/services?category=Streaming", nil, f.cookie)
+	checkContent(t, streaming, "Showing 1–24 of 41 services", `href="/services?category=Streaming&amp;page=2" rel="next"`)
+	lastPage := request(f.handler, http.MethodGet, "/services?category=Streaming&page=1000", nil, f.cookie)
+	checkContent(t, lastPage, "Showing 25–41 of 41 services", `href="/services?category=Streaming" rel="prev"`,
+		`href="/services?category=Streaming&amp;id=youtube&amp;page=2"`)
+	if strings.Contains(lastPage.Body.String(), `rel="next"`) {
+		t.Fatal("last page offered a next page")
+	}
+	youtube := request(f.handler, http.MethodGet, "/services?category=Streaming&id=youtube&page=2", nil, f.cookie)
+	checkContent(t, youtube, `href="/services?category=Streaming&amp;page=2"`, `name="page" value="2"`)
 	index := request(f.handler, http.MethodGet, "/services?search=youtube", nil, f.cookie)
-	checkContent(t, index, "YouTube", "1 of 142 services", "/services/icons/youtube")
+	checkContent(t, index, "YouTube", "1 matching service", "/services/icons/youtube", `href="/services?id=youtube&amp;search=youtube"`)
+	noMatches := request(f.handler, http.MethodGet, "/services?search=some-unmatched-service&page=2", nil, f.cookie)
+	checkContent(t, noMatches, "No services match these filters.")
 	detail := request(f.handler, http.MethodGet, "/services?id=amazon&host=s3.amazonaws.com&type=CNAME", nil, f.cookie)
 	checkContent(t, detail, "Except CNAME queries", "No match for s3.amazonaws.com. CNAME", "awsdns-*.org")
 	detail = request(f.handler, http.MethodGet, "/services?id=amazon&host=s3.amazonaws.com&type=A", nil, f.cookie)

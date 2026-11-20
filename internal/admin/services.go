@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"maps"
 	"net/http"
+	"net/url"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/miekg/dns"
@@ -13,8 +15,11 @@ import (
 	"github.com/pridkett/marco/internal/filter"
 )
 
+const servicesPerPage = 24
+
 type serviceCard struct {
 	ID, Name, Category, Version string
+	URL                         string
 	HasIcon, Custom             bool
 	Count                       int
 }
@@ -30,6 +35,30 @@ type servicePage struct {
 	Types            []string
 	Result, Error    string
 	Total            int
+	Matches          int
+	First, Last      int
+	Number           int
+	Back, Prev, Next string
+}
+
+func (p *servicePage) catalogURL(number int, id string) string {
+	params := url.Values{}
+	if p.Search != "" {
+		params.Set("search", p.Search)
+	}
+	if p.Category != "" {
+		params.Set("category", p.Category)
+	}
+	if number > 1 {
+		params.Set("page", strconv.Itoa(number))
+	}
+	if id != "" {
+		params.Set("id", id)
+	}
+	if len(params) == 0 {
+		return "/services"
+	}
+	return "/services?" + params.Encode()
 }
 
 func categoryName(id string) string {
@@ -52,6 +81,13 @@ func (s *server) servicePage(p *page, r *http.Request, desired config.Desired) i
 	cardData := s.serviceCards(desired)
 	result := &p.Services
 	result.Total = len(cardData)
+	result.Search = strings.TrimSpace(query.Get("search"))
+	result.Category = query.Get("category")
+	number, err := strconv.Atoi(query.Get("page"))
+	if err != nil {
+		number = 1
+	}
+	result.Number = max(1, number)
 	if id := query.Get("id"); id != "" {
 		card, ok := cardData[id]
 		if !ok {
@@ -60,6 +96,7 @@ func (s *server) servicePage(p *page, r *http.Request, desired config.Desired) i
 		}
 		p.Title = card.Name
 		result.Detail = &card
+		result.Back = result.catalogURL(result.Number, "")
 		spec, custom := desired.Services[id]
 		if !custom {
 			spec.Rules = s.hooks.Catalog.Entries[id].Rules
@@ -74,8 +111,6 @@ func (s *server) servicePage(p *page, r *http.Request, desired config.Desired) i
 		s.testService(result, query.Get("host"), query.Get("type"), id)
 		return http.StatusOK
 	}
-	result.Search = strings.TrimSpace(query.Get("search"))
-	result.Category = query.Get("category")
 	categories := make(map[string]bool)
 	search := strings.ToLower(result.Search)
 	for _, card := range cardData {
@@ -95,6 +130,24 @@ func (s *server) servicePage(p *page, r *http.Request, desired config.Desired) i
 		}
 		return strings.Compare(left.ID, right.ID)
 	})
+	result.Matches = len(result.Cards)
+	if result.Matches == 0 {
+		return http.StatusOK
+	}
+	lastPage := 1 + (result.Matches-1)/servicesPerPage
+	result.Number = min(result.Number, lastPage)
+	offset := (result.Number - 1) * servicesPerPage
+	result.First, result.Last = offset+1, min(offset+servicesPerPage, result.Matches)
+	result.Cards = result.Cards[offset:result.Last]
+	for i := range result.Cards {
+		result.Cards[i].URL = result.catalogURL(result.Number, result.Cards[i].ID)
+	}
+	if result.Number > 1 {
+		result.Prev = result.catalogURL(result.Number-1, "")
+	}
+	if result.Number < lastPage {
+		result.Next = result.catalogURL(result.Number+1, "")
+	}
 	return http.StatusOK
 }
 

@@ -3,6 +3,7 @@ package admin
 
 import (
 	"context"
+	"crypto/sha256"
 	"embed"
 	"errors"
 	"fmt"
@@ -25,10 +26,24 @@ import (
 //go:embed assets/*.html assets/*.css
 var assets embed.FS
 
+const (
+	adminCSSFile = "assets/admin.css"
+	adminCSSPath = "/" + adminCSSFile
+)
+
+var adminCSSVersion = func() string {
+	css, err := assets.ReadFile(adminCSSFile)
+	if err != nil {
+		panic(err)
+	}
+	return fmt.Sprintf("%x", sha256.Sum256(css))
+}()
+
 var views = template.Must(template.New("").Funcs(template.FuncMap{
-	"when":   dateTime,
-	"age":    age,
-	"pretty": pretty,
+	"stylesheet": func() string { return adminCSSPath + "?v=" + adminCSSVersion },
+	"when":       dateTime,
+	"age":        age,
+	"pretty":     pretty,
 	"label": func(value any) string {
 		s := fmt.Sprint(value)
 		if s == "" {
@@ -77,10 +92,12 @@ func New(authentication *auth.Manager, history *querylog.Log, hooks Hooks) http.
 	for _, path := range []string{"/livez", "/healthz", "/readyz"} {
 		mux.HandleFunc("GET "+path, s.health)
 	}
-	mux.HandleFunc("GET /assets/admin.css", s.secure(func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("GET "+adminCSSPath, s.secure(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/css; charset=utf-8")
-		w.Header().Set("Cache-Control", "private, max-age=3600")
-		http.ServeFileFS(w, r, assets, "assets/admin.css")
+		if r.URL.Query().Get("v") == adminCSSVersion {
+			w.Header().Set("Cache-Control", "private, max-age=31536000, immutable")
+		}
+		http.ServeFileFS(w, r, assets, adminCSSFile)
 	}))
 	mux.HandleFunc("GET /login", s.secure(func(w http.ResponseWriter, r *http.Request) {
 		if _, ok := s.auth.Session(r); ok {
