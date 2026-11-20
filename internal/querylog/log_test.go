@@ -79,7 +79,7 @@ func TestHistoryFiltersAnonymizationAndRetention(t *testing.T) {
 		t.Fatalf("first page: %+v %v", page, err)
 	}
 	got := page.Entries[0]
-	if got.Name != "filtered-new.test." || !strings.HasPrefix(got.Client, "client-") || got.TypeLabel() != "AAAA" ||
+	if got.Name != "filtered-new.test." || got.Client != l.ClientID(netip.MustParseAddr("2001:db8::1234")) || got.TypeLabel() != "AAAA" ||
 		got.RCodeLabel() != "NXDOMAIN" || got.Cache != "hit" || got.Latency != 2*time.Millisecond {
 		t.Fatalf("invalid entry: %+v", got)
 	}

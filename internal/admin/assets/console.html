@@ -122,17 +122,17 @@
               <a href="/devices/edit?id={{urlquery .ID}}">{{.DisplayName}}</a>
               {{if and .Reported (ne .Reported .DisplayName)}}<span class="secondary">{{.Reported}}</span>{{end}}
               {{with .MAC}}<span class="secondary">{{.}}</span>{{end}}
+              {{if .HistoryURL}}<a class="device-query-link" href="{{.HistoryURL}}" aria-label="Query log for {{.DisplayName}}">Query log</a>{{end}}
             </div>
           </div>
         </th>
         <td>{{range .Addresses}}<span class="address">{{.IP}}{{with .Status}} <small>{{.}}</small>{{end}}</span>{{else}}—{{end}}</td>
         <td>{{label .Network}}</td>
         <td>{{label .Mode}}{{with .PolicyFrom}} <span class="secondary">{{.}}</span>{{end}}{{with .Assigned.Group}}<span class="secondary">Assigned to {{.}}</span>{{end}}</td>
-        <td>{{age .LastSeen}}{{if not .LastSeen.IsZero}}<span class="secondary time">{{when .LastSeen}}</span>{{end}}</td>
-        <td{{with .PollTitle}} title="{{.}}"{{end}}>{{.PollLabel}}</td>
+        <td>{{if eq .Presence "Connected at last poll"}}Connected{{else}}{{$seen := .SeenAt}}{{age $seen}}{{if not $seen.IsZero}}<span class="secondary time">{{when $seen}}</span>{{end}}{{end}}</td>
         <td>{{.Published}}</td>
       </tr>
-    {{else}}<tr><td colspan="7" class="empty">No devices match these filters.</td></tr>{{end}}
+    {{else}}<tr><td colspan="6" class="empty">No devices match these filters.</td></tr>{{end}}
     </tbody>
   </table>
 </div>
@@ -147,7 +147,10 @@
 
 {{define "device-edit"}}
 <section class="panel section narrow">
-  <p><a href="/devices">Back to devices</a></p>
+  <div class="toolbar spread">
+    <a href="/devices">Back to devices</a>
+    {{with .DeviceHistoryURL}}<a class="button" href="{{.}}">View query log</a>{{end}}
+  </div>
   {{if or .NewDevice .DeviceID}}
   <form class="stack" method="post" action="/devices/edit">
     {{template "revision-fields" .}}
@@ -308,7 +311,7 @@
 {{if .Stats.Enabled}}
   {{with .Stats.Error}}<p class="message error" role="alert">{{.}}</p>{{end}}
   <form action="/query-log" method="get" class="toolbar">
-    <label>Client <input name="client" placeholder="IP or client ID" value="{{.HistoryClient}}"></label>
+    <label>Client <input name="client" placeholder="IPs or client IDs" value="{{.HistoryClient}}"></label>
     <label>Question <input name="question" type="search" value="{{.HistoryName}}"></label>
     <label>Outcome <input name="outcome" placeholder="Blocked, NXDOMAIN, …" value="{{.HistoryOutcome}}"></label>
     <label>From (UTC) <input name="after" type="datetime-local" value="{{.HistoryAfter}}"></label>

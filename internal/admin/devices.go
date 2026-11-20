@@ -2,12 +2,15 @@ package admin
 
 import (
 	"cmp"
+	"maps"
 	"net/netip"
 	"net/url"
 	"slices"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/pridkett/marco/internal/config"
 )
 
 type deviceColumn struct {
@@ -33,10 +36,7 @@ var deviceSortColumns = []deviceSortColumn{
 		return cmp.Or(compareDeviceText(a.Mode, b.Mode), compareDeviceText(a.PolicyFrom, b.PolicyFrom))
 	}},
 	{"seen", "Last seen", "desc", func(a, b deviceRow) int {
-		return a.LastSeen.Compare(b.LastSeen)
-	}},
-	{"poll", "Controller poll", "desc", func(a, b deviceRow) int {
-		return a.connectionTime().Compare(b.connectionTime())
+		return a.SeenAt().Compare(b.SeenAt())
 	}},
 	{"publication", "Publication", "asc", func(a, b deviceRow) int {
 		return compareDeviceText(a.Published, b.Published)
@@ -111,38 +111,39 @@ func (r deviceRow) firstAddress() netip.Addr {
 	return netip.Addr{}
 }
 
-func (r deviceRow) connectionTime() time.Time {
-	switch {
-	case r.Controller == "" || r.Legacy:
-		return time.Time{}
-	case r.Connected && !r.LastPoll.IsZero():
-		return r.LastPoll
-	case !r.LastConnected.IsZero():
-		return r.LastConnected
-	default:
+func (r deviceRow) SeenAt() time.Time {
+	if !r.LastSeen.IsZero() {
 		return r.LastSeen
 	}
+	return r.LastConnected
 }
 
-func (r deviceRow) PollLabel() string {
-	switch r.Presence {
-	case "Connected at last poll":
-		return "Connected"
-	case "Absent at last poll":
-		if last := r.connectionTime(); !last.IsZero() {
-			return "Last connected " + strings.ToLower(age(last))
+func (s *server) deviceHistoryURL(device config.Device, settings config.DeviceSettings) string {
+	addresses := make(map[netip.Addr]struct{})
+	for _, ip := range settings.Pinned {
+		if ip.IsValid() {
+			addresses[ip.Unmap().WithZone("")] = struct{}{}
 		}
-		return "Absent"
-	default:
-		return r.Presence
 	}
-}
-
-func (r deviceRow) PollTitle() string {
-	if last := r.connectionTime(); !last.IsZero() {
-		return "Last connected " + dateTime(last)
+	for _, address := range device.Addresses {
+		if !address.IP.IsValid() {
+			continue
+		}
+		ip := address.IP.Unmap().WithZone("")
+		if address.Conflicted || address.Reassigned || address.Superseded {
+			delete(addresses, ip)
+		} else {
+			addresses[ip] = struct{}{}
+		}
 	}
-	return ""
+	if len(addresses) == 0 {
+		return ""
+	}
+	clients := make([]string, 0, len(addresses))
+	for _, ip := range slices.SortedFunc(maps.Keys(addresses), netip.Addr.Compare) {
+		clients = append(clients, s.history.ClientID(ip))
+	}
+	return "/query-log?" + url.Values{"client": {strings.Join(clients, ",")}}.Encode()
 }
 
 const unifiArtworkOrigin = "https://static.ui.com"

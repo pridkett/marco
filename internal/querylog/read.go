@@ -127,7 +127,7 @@ func (l *Log) Stats() Stats {
 }
 
 type Filter struct {
-	Client   string
+	Client   string // One or more comma-separated IPs or client IDs.
 	Question string
 	Outcome  string
 	After    time.Time
@@ -186,8 +186,11 @@ func (l *Log) Search(ctx context.Context, f Filter) (Page, error) {
 	}
 	args := []any{cutoff.UnixNano()}
 	if f.Client != "" {
-		clauses = append(clauses, "client = ?")
-		args = append(args, f.Client)
+		clients := strings.Split(f.Client, ",")
+		clauses = append(clauses, "client IN (?"+strings.Repeat(", ?", len(clients)-1)+")")
+		for _, client := range clients {
+			args = append(args, strings.TrimSpace(client))
+		}
 	}
 	if f.Question != "" {
 		clauses = append(clauses, "instr(name, ?) > 0")

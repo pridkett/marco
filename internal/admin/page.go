@@ -37,6 +37,7 @@ type page struct {
 	DeviceSort, DeviceOrder    string
 	DeviceColumns              []deviceColumn
 	DevicePollURL              string
+	DeviceHistoryURL           string
 	DeviceID, DeviceGroup      string
 	NewDevice                  bool
 	Subscriptions              []sourceRow
@@ -64,6 +65,7 @@ type deviceRow struct {
 	Published  string
 	Presence   string
 	Addresses  []deviceAddress
+	HistoryURL string
 }
 
 type deviceAddress struct {
@@ -115,6 +117,13 @@ func (s *server) page(w http.ResponseWriter, r *http.Request, session auth.Sessi
 		}
 		p.DeviceSearch, p.DeviceFilter = r.URL.Query().Get("search"), r.URL.Query().Get("presence")
 		p.Devices = s.deviceRows(state, p.DeviceSearch, p.DeviceFilter, now)
+		p.stats(s.history)
+		if p.Stats.Enabled {
+			for i := range p.Devices {
+				row := &p.Devices[i]
+				row.HistoryURL = s.deviceHistoryURL(row.Device, row.Assigned)
+			}
+		}
 		p.sortDevices(r.URL.Query().Get("sort"), r.URL.Query().Get("order"))
 	case "/devices/edit":
 		p.Title = "Edit device"
@@ -123,17 +132,19 @@ func (s *server) page(w http.ResponseWriter, r *http.Request, session auth.Sessi
 		if f.DeviceID != "" {
 			p.DeviceID = f.DeviceID
 		}
+		device, observed := state.Devices[p.DeviceID]
+		settings, configured := state.Desired.Devices[p.DeviceID]
 		if p.NewDevice {
 			p.Title = "Add manual device"
-		} else if _, observed := state.Devices[p.DeviceID]; !observed {
-			if _, configured := state.Desired.Devices[p.DeviceID]; !configured {
-				if status == http.StatusOK {
-					p.Feedback.Error = "The requested device no longer exists."
-					status = http.StatusNotFound
-				}
+		} else if observed || configured {
+			p.stats(s.history)
+			if p.Stats.Enabled {
+				p.DeviceHistoryURL = s.deviceHistoryURL(device, settings)
 			}
+		} else if status == http.StatusOK {
+			p.Feedback.Error = "The requested device no longer exists."
+			status = http.StatusNotFound
 		}
-		settings := state.Desired.Devices[p.DeviceID]
 		p.DeviceGroup, settings.Group = settings.Group, ""
 		if f.DeviceGroup != nil {
 			p.DeviceGroup = *f.DeviceGroup
