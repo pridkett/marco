@@ -18,6 +18,7 @@ const SourceMaxAge = 5 * time.Minute
 
 type Observation struct {
 	MAC, SourceID, Reported, Hostname, Network string
+	UniFiFingerprint                           uint32
 	Addresses                                  []netip.Addr
 	LastSeen                                   time.Time
 	Present                                    bool
@@ -164,6 +165,9 @@ func collect(state *config.State, report Snapshot) (map[string]*observedDevice, 
 			item.identity.SourceID = row.SourceID
 		}
 		ev := observationEvidence(row, report.ObservedAt)
+		if row.UniFiFingerprint != 0 && (item.identity.UniFiFingerprint == 0 || row.Present && !item.present || ev.seen.After(item.seen)) {
+			item.identity.UniFiFingerprint = row.UniFiFingerprint
+		}
 		if row.Present && !item.present || ev.seen.After(item.seen) || item.identity.Reported == "" {
 			item.identity.Reported = strings.TrimSpace(row.Reported)
 			item.identity.Hostname = strings.TrimSpace(row.Hostname)
@@ -203,6 +207,17 @@ func updateAddress(old config.Address, ip netip.Addr, ev evidence) config.Addres
 	return old
 }
 
+func connectionTime(previous config.Device, present bool, at time.Time) time.Time {
+	switch {
+	case present:
+		return at
+	case previous.LastConnected.IsZero() && previous.Connected:
+		return previous.LastPoll
+	default:
+		return previous.LastConnected
+	}
+}
+
 func applyObservation(device config.Device, item *observedDevice, at time.Time) config.Device {
 	identity := item.identity
 	if identity.MAC == "" {
@@ -210,6 +225,9 @@ func applyObservation(device config.Device, item *observedDevice, at time.Time) 
 	}
 	if identity.SourceID == "" {
 		identity.SourceID = device.SourceID
+	}
+	if identity.UniFiFingerprint == 0 {
+		identity.UniFiFingerprint = device.UniFiFingerprint
 	}
 	identity.FirstSeen = device.FirstSeen
 	if identity.FirstSeen.IsZero() {
@@ -220,6 +238,7 @@ func applyObservation(device config.Device, item *observedDevice, at time.Time) 
 		identity.LastSeen = item.seen
 	}
 	identity.LastPoll, identity.Connected = at, item.present
+	identity.LastConnected = connectionTime(device, item.present, at)
 	identity.Canonical = device.Canonical
 	prior := make(map[netip.Addr]config.Address, len(device.Addresses))
 	moved := make(map[bool]bool)
@@ -347,6 +366,7 @@ func Reconcile(state *config.State, report Snapshot) error {
 		if _, present := items[id]; present || !controls(device, report) {
 			continue
 		}
+		device.LastConnected = connectionTime(device, false, report.ObservedAt)
 		device.Connected, device.LastPoll = false, report.ObservedAt
 		for i := range device.Addresses {
 			device.Addresses[i].Active = false

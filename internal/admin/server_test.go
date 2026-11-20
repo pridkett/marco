@@ -272,6 +272,53 @@ func TestRoutesReadyAuthAndRenderedViews(t *testing.T) {
 	checkContent(t, testUpstream, "Upstream test completed", "reachable")
 }
 
+func TestDevicesSortAndDisplay(t *testing.T) {
+	f := setup(t)
+	cam := f.state.Devices["cam-01"]
+	cam.Canonical, cam.UniFiFingerprint = "lab-camera", 4488
+	f.state.Devices[cam.ID] = cam
+	f.state.Devices["desk"] = config.Device{
+		ID: "desk", Canonical: "lab-desk", Reported: "lab-desk", Controller: cam.Controller,
+		Connected: true, LastSeen: cam.LastSeen.Add(-time.Hour), LastPoll: cam.LastPoll,
+		Addresses: []config.Address{{IP: netip.MustParseAddr("192.0.2.7"), Publish: true}},
+	}
+	f.state.Devices["old"] = config.Device{
+		ID: "old", Canonical: "lab-old", Controller: cam.Controller,
+		LastConnected: time.Now().Add(-2 * time.Hour), LastPoll: cam.LastPoll,
+	}
+	f.login(t)
+
+	page := request(f.handler, "GET", "/devices?search=lab&presence=Connected+at+last+poll&sort=addresses", nil, f.cookie)
+	checkContent(t, page, `aria-sort="ascending"`, `>Connected</td>`,
+		`/devices?order=desc&amp;presence=Connected&#43;at&#43;last&#43;poll&amp;search=lab&amp;sort=addresses`,
+		`src="https://static.ui.com/fingerprint/0/4488_101x101.png"`, `referrerpolicy="no-referrer"`, "Ownership conflict",
+		`name="sort" value="addresses"`, `name="order" value="asc"`)
+	body := page.Body.String()
+	if strings.Index(body, ">lab-desk</a>") >= strings.Index(body, ">lab-camera</a>") ||
+		strings.Contains(body, ">lab-old</a>") || strings.Contains(body, "<small>Publishable</small>") ||
+		strings.Count(body, `class="device-sort"`) != 7 || strings.Count(body, `aria-sort=`) != 1 {
+		t.Fatalf("unexpected sorted address table: %s", body)
+	}
+	if !strings.Contains(page.Header().Get("Content-Security-Policy"), "img-src 'self' "+unifiArtworkOrigin) {
+		t.Fatal("Devices CSP does not allow UniFi artwork")
+	}
+	for _, path := range []string{
+		"/devices?sort=addresses&order=desc", "/devices?sort=seen", "/devices?sort=unknown&order=desc",
+	} {
+		page := request(f.handler, "GET", path, nil, f.cookie)
+		checkContent(t, page, ">lab-camera</a>", ">lab-desk</a>", ">Last connected 2 hours ago</td>")
+		if body := page.Body.String(); strings.Index(body, ">lab-camera</a>") >= strings.Index(body, ">lab-desk</a>") {
+			t.Errorf("%s did not put lab-camera first", path)
+		}
+	}
+
+	page = request(f.handler, "POST", "/devices/poll?search=lab&sort=addresses&order=desc", url.Values{"csrf": {f.csrf}}, f.cookie)
+	checkContent(t, page, "UniFi poll requested", `aria-sort="descending"`, `name="search" type="search" value="lab"`)
+	if !strings.Contains(page.Header().Get("Content-Security-Policy"), unifiArtworkOrigin) {
+		t.Fatal("poll response CSP does not allow UniFi artwork")
+	}
+}
+
 func TestQueryBadge(t *testing.T) {
 	cases := []struct {
 		origin, cache string

@@ -126,22 +126,24 @@ type Address struct {
 }
 
 type Device struct {
-	ID          string    `json:"id"`
-	Controller  string    `json:"controller,omitempty"`
-	Site        string    `json:"site,omitempty"`
-	MAC         string    `json:"mac,omitempty"`
-	SourceID    string    `json:"sourceID,omitempty"`
-	Canonical   string    `json:"canonical,omitempty"`
-	Reported    string    `json:"reported,omitempty"`
-	Hostname    string    `json:"hostname,omitempty"`
-	Network     string    `json:"network,omitempty"`
-	FirstSeen   time.Time `json:"firstSeen,omitempty"`
-	LastSeen    time.Time `json:"lastSeen,omitempty"`
-	LastPoll    time.Time `json:"lastPoll,omitempty"`
-	Connected   bool      `json:"connected,omitempty"`
-	Legacy      bool      `json:"legacy,omitempty"`
-	LegacyOwner string    `json:"legacyOwner,omitempty"`
-	Addresses   []Address `json:"addresses,omitempty"`
+	ID               string    `json:"id"`
+	Controller       string    `json:"controller,omitempty"`
+	Site             string    `json:"site,omitempty"`
+	MAC              string    `json:"mac,omitempty"`
+	SourceID         string    `json:"sourceID,omitempty"`
+	Canonical        string    `json:"canonical,omitempty"`
+	Reported         string    `json:"reported,omitempty"`
+	Hostname         string    `json:"hostname,omitempty"`
+	Network          string    `json:"network,omitempty"`
+	FirstSeen        time.Time `json:"firstSeen,omitempty"`
+	LastSeen         time.Time `json:"lastSeen,omitempty"`
+	LastPoll         time.Time `json:"lastPoll,omitempty"`
+	LastConnected    time.Time `json:"lastConnected,omitzero"`
+	Connected        bool      `json:"connected,omitempty"`
+	UniFiFingerprint uint32    `json:"unifiFingerprint,omitempty"`
+	Legacy           bool      `json:"legacy,omitempty"`
+	LegacyOwner      string    `json:"legacyOwner,omitempty"`
+	Addresses        []Address `json:"addresses,omitempty"`
 }
 
 type Artifact struct {

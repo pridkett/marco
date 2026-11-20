@@ -47,6 +47,7 @@ func history(t *testing.T, state *config.State, id, ip string) config.Address {
 func TestReconcileKeepsNamesAndReplacesMovedAddresses(t *testing.T) {
 	s := config.State{Desired: config.Defaults()}
 	camera := fixtureRow("02-AA-00-00-00-01", "Hall Camera", "192.0.2.10", "2001:db8::10")
+	camera.UniFiFingerprint = 4488
 	cameraID := identityKey("fixture-controller", "default", "02:aa:00:00:00:01", "")
 	poll(t, &s, 0, camera)
 	if dev := s.Devices[cameraID]; dev.Canonical != "hall-camera" || !dev.FirstSeen.Equal(fixtureTime) {
@@ -54,7 +55,8 @@ func TestReconcileKeepsNamesAndReplacesMovedAddresses(t *testing.T) {
 	}
 	poll(t, &s, time.Minute)
 	dev := s.Devices[cameraID]
-	if dev.Connected || !dev.LastSeen.Equal(fixtureTime) || !dev.LastPoll.Equal(fixtureTime.Add(time.Minute)) {
+	if dev.Connected || !dev.LastSeen.Equal(fixtureTime) || !dev.LastConnected.Equal(fixtureTime) ||
+		!dev.LastPoll.Equal(fixtureTime.Add(time.Minute)) || dev.UniFiFingerprint != 4488 {
 		t.Fatalf("absent device: %+v", dev)
 	}
 	if address := history(t, &s, cameraID, "192.0.2.10"); !address.Publish || address.Active {
@@ -68,7 +70,8 @@ func TestReconcileKeepsNamesAndReplacesMovedAddresses(t *testing.T) {
 	old.Present, old.UseObservationTime = false, false
 	old.LastSeen = fixtureTime
 	poll(t, &s, 2*time.Minute, moved, old, newcomer)
-	if got := s.Devices[cameraID]; got.Canonical != "hall-camera" || got.Reported != "Renamed in UniFi" {
+	if got := s.Devices[cameraID]; got.Canonical != "hall-camera" || got.Reported != "Renamed in UniFi" ||
+		!got.LastConnected.Equal(fixtureTime.Add(2*time.Minute)) || got.UniFiFingerprint != 4488 {
 		t.Fatalf("reported change should preserve canonical name: %+v", got)
 	}
 	if got := s.Devices[newID].Canonical; !strings.HasPrefix(got, "hall-camera-") {

@@ -315,16 +315,28 @@ func (a *adapter) officialPoll(ctx context.Context) ([]Observation, error) {
 }
 
 type localRow struct {
-	ID        string          `json:"_id"`
-	MAC       string          `json:"mac"`
-	IP        string          `json:"ip"`
-	Name      string          `json:"name"`
-	Hostname  string          `json:"hostname"`
-	Network   string          `json:"network"`
-	NetworkID string          `json:"network_id"`
-	VLAN      json.RawMessage `json:"vlan"`
-	State     json.RawMessage `json:"state"`
-	LastSeen  json.RawMessage `json:"last_seen"`
+	ID                  string          `json:"_id"`
+	MAC                 string          `json:"mac"`
+	IP                  string          `json:"ip"`
+	Name                string          `json:"name"`
+	Hostname            string          `json:"hostname"`
+	Network             string          `json:"network"`
+	NetworkID           string          `json:"network_id"`
+	VLAN                json.RawMessage `json:"vlan"`
+	State               json.RawMessage `json:"state"`
+	LastSeen            json.RawMessage `json:"last_seen"`
+	Fingerprint         json.RawMessage `json:"dev_id"`
+	FingerprintOverride json.RawMessage `json:"dev_id_override"`
+}
+
+func (r localRow) fingerprintID() uint32 {
+	for _, field := range []json.RawMessage{r.FingerprintOverride, r.Fingerprint} {
+		id, err := strconv.ParseUint(strings.Trim(string(field), `"`), 10, 32)
+		if err == nil && id > 0 {
+			return uint32(id)
+		}
+	}
+	return 0
 }
 
 func (a *adapter) login(ctx context.Context) error {
@@ -379,6 +391,7 @@ func (a *adapter) localPoll(ctx context.Context) ([]Observation, error) {
 			if err != nil {
 				return nil, err
 			}
+			obs.UniFiFingerprint = row.fingerprintID()
 			out = append(out, obs)
 		}
 	}
