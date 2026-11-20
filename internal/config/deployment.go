@@ -321,6 +321,9 @@ func (d Deployment) ReadInitial() (Desired, error) {
 	if d.Initial == "" {
 		return c, nil
 	}
+	// A portable settings file owns its groups and subscriptions. A file
+	// exported without those maps describes an intentionally empty selection.
+	c.Groups, c.Subscriptions = nil, nil
 	err := ReadJSON(d.Initial, &c)
 	return c, err
 }

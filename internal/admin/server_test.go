@@ -300,3 +300,51 @@ func TestRevisionConflictsCSRFSettingsAndAudit(t *testing.T) {
 		t.Fatal("logout did not revoke the session")
 	}
 }
+
+func TestAddDefaultsAndAssignDeviceGroup(t *testing.T) {
+	f := setup(t)
+	f.login(t)
+	f.state.Desired.Groups["trusted"] = config.Policy{Mode: config.Unfiltered}
+	f.state.Desired.Subscriptions["custom-adaway"] = config.Subscription{
+		URL: config.DefaultSubscriptions()["adguard-filters-2"].URL,
+	}
+	post := func(path string, form url.Values) *httptest.ResponseRecorder {
+		form.Set("csrf", f.csrf)
+		form.Set("revision", fmt.Sprint(f.state.Revision))
+		return request(f.handler, "POST", path, form, f.cookie)
+	}
+	if added := post("/policies/defaults", url.Values{}); added.Code != http.StatusSeeOther {
+		t.Fatalf("adding groups returned %d", added.Code)
+	}
+	for group := range config.DefaultGroups() {
+		if _, ok := f.state.Desired.Groups[group]; !ok {
+			t.Fatalf("default group %q missing", group)
+		}
+	}
+	if f.state.Desired.Groups["trusted"].Mode != config.Unfiltered {
+		t.Fatal("adding defaults changed an existing group policy")
+	}
+	form := request(f.handler, "GET", "/devices/edit?id=cam-01", nil, f.cookie)
+	checkContent(t, form, `<select name="group">`, `<option value="IoT" selected>`, `<option value="mobile">`)
+	assignment := post("/devices/edit", url.Values{
+		"id": {"cam-01"}, "group-picker": {"1"}, "group": {"mobile"}, "settings": {`{"unpublish":true}`},
+	})
+	if group := f.state.Desired.Devices["cam-01"]; assignment.Code != http.StatusSeeOther || group.Group != "mobile" || !group.Unpublish {
+		t.Fatalf("wrong device settings after assignment: %+v, HTTP %d", group, assignment.Code)
+	}
+	removed := post("/devices/edit", url.Values{
+		"id": {"cam-01"}, "group-picker": {"1"}, "group": {""}, "settings": {`{"unpublish":true}`},
+	})
+	if removed.Code != http.StatusSeeOther || f.state.Desired.Devices["cam-01"].Group != "" {
+		t.Fatal("selecting Unassigned did not clear the group")
+	}
+	if added := post("/blocklists/defaults", url.Values{}); added.Code != http.StatusSeeOther {
+		t.Fatalf("adding defaults returned %d", added.Code)
+	}
+	if !f.state.Desired.Subscriptions["adguard-filters-1"].Enabled {
+		t.Fatal("enabled AdGuard DNS list is missing")
+	}
+	if _, duplicate := f.state.Desired.Subscriptions["adguard-filters-2"]; duplicate {
+		t.Fatal("already configured AdAway URL was duplicated")
+	}
+}

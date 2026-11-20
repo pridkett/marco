@@ -10,9 +10,27 @@
       }
     ]
   },
+  "groups": {
+    "infrastructure": {},
+    "mobile": {},
+    "iot": {},
+    "trusted": {},
+    "other": {}
+  },
   "subscriptions": {
-    "demo-local": {"file": "demo.txt", "enabled": true},
-    "example-https": {"url": "https://lists.example/deny.txt", "enabled": false}
+    "adguard-filters-1": {
+      "name": "AdGuard DNS filter",
+      "format": "adguard",
+      "url": "https://adguardteam.github.io/HostlistsRegistry/assets/filter_1.txt",
+      "enabled": true
+    },
+    "adguard-filters-2": {
+      "name": "AdAway Default Blocklist",
+      "format": "adguard",
+      "url": "https://adguardteam.github.io/HostlistsRegistry/assets/filter_2.txt",
+      "enabled": false
+    },
+    "demo-local": {"file": "demo.txt", "enabled": true}
   },
   "zones": [
     {"name": "home.arpa.", "private": true, "publish": true}

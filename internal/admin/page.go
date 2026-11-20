@@ -32,7 +32,7 @@ type page struct {
 	PollStatus                 []siteStatus
 	Devices                    []deviceRow
 	DeviceSearch, DeviceFilter string
-	DeviceID                   string
+	DeviceID, DeviceGroup      string
 	NewDevice                  bool
 	Subscriptions              []sourceRow
 	AliasStatus                map[string]string
@@ -131,7 +131,12 @@ func (s *server) page(w http.ResponseWriter, r *http.Request, session auth.Sessi
 				}
 			}
 		}
-		p.EditText = pretty(state.Desired.Devices[p.DeviceID])
+		settings := state.Desired.Devices[p.DeviceID]
+		p.DeviceGroup, settings.Group = settings.Group, ""
+		if f.DeviceGroup != nil {
+			p.DeviceGroup = *f.DeviceGroup
+		}
+		p.EditText = pretty(settings)
 	case "/local-dns":
 		p.EditText = pretty(localConfig(state.Desired))
 		p.AliasStatus = s.aliasStatus(state.Desired.Records)

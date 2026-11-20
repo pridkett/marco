@@ -115,7 +115,7 @@
   <section class="panel section">
     <h2>Blocklist refreshes</h2>
     {{if .Subscriptions}}
-    <dl class="facts">{{range .Subscriptions}}<div><dt>{{.ID}}</dt><dd>{{.State}}{{if not .Info.FetchedAt.IsZero}} · <span title="{{when .Info.FetchedAt}}">{{age .Info.FetchedAt}}</span>{{end}}</dd></div>{{end}}</dl>
+    <dl class="facts">{{range .Subscriptions}}<div><dt>{{if .Spec.Name}}{{.Spec.Name}}{{else}}{{.ID}}{{end}}</dt><dd>{{.State}}{{if not .Info.FetchedAt.IsZero}} · <span title="{{when .Info.FetchedAt}}">{{age .Info.FetchedAt}}</span>{{end}}</dd></div>{{end}}</dl>
     {{else}}<p class="muted">No subscriptions configured.</p>{{end}}
     <a href="/blocklists">Open blocklists</a>
   </section>
@@ -193,8 +193,15 @@
     <p class="muted">Device ID <strong>{{.DeviceID}}</strong></p>
     <input type="hidden" name="id" value="{{.DeviceID}}">
     {{end}}
+    <input type="hidden" name="group-picker" value="1">
+    <label>Device group
+      <select name="group">
+        <option value=""{{if not .DeviceGroup}} selected{{end}}>Unassigned</option>
+        {{range $name, $group := .Desired.Groups}}<option value="{{$name}}"{{if eq $name $.DeviceGroup}} selected{{end}}>{{$name}}</option>{{end}}
+      </select>
+    </label>
     <label>Device settings <textarea name="settings" rows="12" spellcheck="false" required aria-describedby="device-help">{{.EditText}}</textarea></label>
-    <p id="device-help" class="muted">Set <code>name</code>, <code>group</code>, <code>unpublish</code>, <code>aliases</code>, <code>pinned</code> addresses, interface <code>links</code> or <code>policy</code> overrides. Omit inherited policy fields. Use an empty array to replace a group’s service or subscription selection.</p>
+    <p id="device-help" class="muted">Set <code>name</code>, <code>unpublish</code>, <code>aliases</code>, <code>pinned</code> addresses, interface <code>links</code> or <code>policy</code> overrides. Omit inherited policy fields. Use an empty array to replace a group’s service or subscription selection.</p>
     <button type="submit" class="button primary">Save device</button>
   </form>
   {{end}}
@@ -239,6 +246,10 @@
       <div><dt>Default</dt><dd>{{.Desired.Default.Mode}}</dd></div>
       {{range $name, $group := .Desired.Groups}}<div><dt>{{$name}}</dt><dd>{{if $group.Mode}}{{$group.Mode}}{{else}}Inherited{{end}}</dd></div>{{end}}
     </dl>
+    <form action="/policies/defaults" method="post">
+      {{template "revision-fields" .}}
+      <button type="submit" class="button">Add default groups</button>
+    </form>
   </section>
   <section class="panel section">
     <h2>Blocked services</h2>
@@ -264,7 +275,7 @@
     <tbody>
     {{range .Subscriptions}}
     <tr>
-      <th scope="row">{{.ID}}{{if .Spec.Allowlist}}<span class="secondary">Allowlist</span>{{end}}</th>
+      <th scope="row">{{if .Spec.Name}}{{.Spec.Name}}<span class="secondary">{{.ID}}</span>{{else}}{{.ID}}{{end}}{{if .Spec.Allowlist}}<span class="secondary">Allowlist</span>{{end}}</th>
       <td>{{.State}}</td><td class="time">{{when .Info.FetchedAt}}</td><td>{{.Info.RuleCount}}</td>
       <td><code>{{label .Info.Digest}}</code></td>
       <td><div class="toolbar">
@@ -290,6 +301,10 @@
 {{template "probe" .}}
 <section class="panel section">
   <h2>Subscription settings</h2>
+  <form action="/blocklists/defaults" method="post">
+    {{template "revision-fields" .}}
+    <button type="submit" class="button">Add AdGuard Home defaults</button>
+  </form>
   <p id="subscription-help" class="muted">Use a named HTTPS <code>url</code> or a provisioned local <code>file</code>. An enabled subscription waits for a valid artifact before filtering. Group selections are managed in <a href="/policies">Policies</a>.</p>
   <form action="/blocklists" method="post" class="stack">
     {{template "revision-fields" .}}

@@ -14,6 +14,7 @@ import (
 )
 
 type guardSubscription struct {
+	Name    string `yaml:"name"`
 	ID      int64  `yaml:"id"`
 	URL     string `yaml:"url"`
 	Enabled bool   `yaml:"enabled"`
@@ -107,6 +108,10 @@ func (p *importer) adGuard() error {
 	if err := yaml.Unmarshal(file, &ag); err != nil {
 		// YAML type errors can include input values, which are not needed in a preview.
 		return fmt.Errorf("cannot decode sanitized AdGuard YAML")
+	}
+	if (ag.Filters != nil || ag.Whitelist != nil) && p.Revision == 1 && maps.Equal(p.Desired.Subscriptions, config.DefaultSubscriptions()) {
+		// A first-run AdGuard import supplies its own subscription selection.
+		p.Desired.Subscriptions = nil
 	}
 	p.guardSubscriptions(ag.Filters, false)
 	p.guardSubscriptions(ag.Whitelist, true)
@@ -235,7 +240,16 @@ func (p *importer) guardSubscriptions(entries []guardSubscription, allow bool) {
 		if entry.ID == 0 {
 			id = fmt.Sprintf("adguard-%s-row-%d", kind, i+1)
 		}
-		source := config.Subscription{URL: entry.URL, Enabled: entry.Enabled, Allowlist: allow}
+		source := config.Subscription{Name: entry.Name, URL: entry.URL, Enabled: entry.Enabled, Allowlist: allow}
+		for _, preset := range config.DefaultSubscriptions() {
+			if preset.URL == source.URL {
+				source.Format = preset.Format
+				if source.Name == "" {
+					source.Name = preset.Name
+				}
+				break
+			}
+		}
 		if err := filter.ValidateSource(source); err != nil {
 			p.unsupported(loc, "source requires an HTTPS URL or explicit provisioned file mapping")
 			continue

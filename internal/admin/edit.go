@@ -49,6 +49,7 @@ type feedback struct {
 	Error, Message string
 	Draft          string
 	DeviceID       string
+	DeviceGroup    *string
 	Answer         *probeAnswer
 	Upstream       any
 	Endpoints      string
@@ -69,6 +70,10 @@ func (s *server) edit(w http.ResponseWriter, r *http.Request, session auth.Sessi
 	}
 	form := r.PostForm
 	draft := feedback{Draft: form.Get("settings"), DeviceID: visible(form.Get("id"))}
+	if operation == "edit-device" && form.Get("group-picker") == "1" {
+		group := form.Get("group")
+		draft.DeviceGroup = &group
+	}
 	if operation == "edit-upstreams" {
 		draft.Endpoints, draft.Draft = draft.Draft, ""
 	}
@@ -144,7 +149,15 @@ func changeFor(operation string, get func(string) string) (func(*config.State) e
 		if err := decode(text, &settings); err != nil {
 			return nil, err
 		}
+		if get("group-picker") == "1" {
+			settings.Group = get("group")
+		}
 		return func(s *config.State) error {
+			if settings.Group != "" {
+				if _, exists := s.Desired.Groups[settings.Group]; !exists {
+					return fmt.Errorf("Unknown device group %q.", settings.Group)
+				}
+			}
 			if get("create") == "1" {
 				_, known := s.Devices[id]
 				_, configured := s.Desired.Devices[id]
@@ -177,6 +190,32 @@ func changeFor(operation string, get func(string) string) (func(*config.State) e
 		return func(s *config.State) error {
 			d := &s.Desired
 			d.Default, d.Groups, d.Assignments, d.Services = cfg.Default, cfg.Groups, cfg.Assignments, cfg.Services
+			return nil
+		}, nil
+	case "add-default-groups":
+		return func(s *config.State) error {
+			if s.Desired.Groups == nil {
+				s.Desired.Groups = config.DefaultGroups()
+			} else {
+				for name, group := range config.DefaultGroups() {
+					if _, exists := s.Desired.Groups[name]; !exists {
+						s.Desired.Groups[name] = group
+					}
+				}
+			}
+			return nil
+		}, nil
+	case "add-default-lists":
+		return func(s *config.State) error {
+			if s.Desired.Subscriptions == nil {
+				s.Desired.Subscriptions = config.DefaultSubscriptions()
+			} else {
+				for id, preset := range config.DefaultSubscriptions() {
+					if _, exists := s.Desired.Subscriptions[id]; !exists && !hasSubscription(s.Desired.Subscriptions, preset) {
+						s.Desired.Subscriptions[id] = preset
+					}
+				}
+			}
 			return nil
 		}, nil
 	case "edit-blocklists":
@@ -218,6 +257,15 @@ func changeFor(operation string, get func(string) string) (func(*config.State) e
 	default:
 		return nil, errors.New("Unknown settings operation.")
 	}
+}
+
+func hasSubscription(lists map[string]config.Subscription, preset config.Subscription) bool {
+	for _, list := range lists {
+		if list.URL == preset.URL && list.Allowlist == preset.Allowlist {
+			return true
+		}
+	}
+	return false
 }
 
 func decode(raw string, dst any) error {

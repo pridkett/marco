@@ -161,7 +161,3 @@ type State struct {
 	SitePolls map[string]time.Time `json:"sitePolls,omitempty"`
 	Artifacts map[string]Artifact  `json:"artifacts,omitempty"`
 }
-
-func Defaults() Desired {
-	return Desired{Version: Version, Default: Policy{Mode: Filtered}, DynamicTTL: 60, StaticTTL: 300}
-}
