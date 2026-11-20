@@ -139,9 +139,9 @@ func TestLocalAccountReusesSessionAndHonorsRetryAfter(t *testing.T) {
 				return
 			}
 			if r.URL.Path == "/proxy/network/api/s/default/stat/device" {
-				fmt.Fprint(w, `{"meta":{"rc":"ok"},"data":[{"mac":"02:AA:00:00:00:04","ip":"192.0.2.44","name":"Offline AP","state":0}]}`)
+				fmt.Fprint(w, `{"meta":{"rc":"ok"},"data":[{"mac":"02:AA:00:00:00:04","ip":"192.0.2.44","name":"Offline AP","state":0,"dev_id_override":{}}]}`)
 			} else {
-				fmt.Fprint(w, `{"meta":{"rc":"ok"},"data":[{"mac":"02:AA:00:00:00:01","ip":"192.0.2.11","hostname":"fixture-client"}]}`)
+				fmt.Fprint(w, `{"meta":{"rc":"ok"},"data":[{"mac":"02:AA:00:00:00:01","ip":"192.0.2.11","hostname":"fixture-client","dev_id":123,"dev_id_override":"4488"}]}`)
 			}
 		default:
 			w.WriteHeader(http.StatusNotFound)
@@ -160,6 +160,9 @@ func TestLocalAccountReusesSessionAndHonorsRetryAfter(t *testing.T) {
 		}
 		if snapshot.Observations[1].Present || snapshot.Observations[1].UseObservationTime {
 			t.Fatal("an offline infrastructure row acquired current presence")
+		}
+		if snapshot.Observations[0].UniFiFingerprint != 4488 || snapshot.Observations[1].UniFiFingerprint != 0 {
+			t.Fatalf("unexpected fingerprints: %+v", snapshot.Observations)
 		}
 	}
 	if logins.Load() != 1 {

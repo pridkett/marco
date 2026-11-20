@@ -178,7 +178,11 @@ func (s *server) secure(next http.HandlerFunc) http.HandlerFunc {
 		// admin page URLs to the identity provider.
 		w.Header().Set("Referrer-Policy", "same-origin")
 		w.Header().Set("X-Frame-Options", "DENY")
-		w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'self'; img-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self' https:")
+		imageSources := "'self'"
+		if r.URL.Path == "/devices" || r.URL.Path == "/devices/poll" {
+			imageSources += " " + unifiArtworkOrigin
+		}
+		w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'self'; img-src "+imageSources+"; base-uri 'none'; frame-ancestors 'none'; form-action 'self' https:")
 		if s.auth == nil {
 			http.Error(w, "Admin sign-in is unavailable. Check the Marco startup log for details.", http.StatusServiceUnavailable)
 			return

@@ -62,6 +62,8 @@ For local-account polling, add this section to `marco.json` and supply `UNIFI_PA
 
 Marco polls clients and adopted infrastructure immediately and every 60 seconds by default. For the official API, use `api-key` and set `"apiKey": {"env": "UNIFI_API_KEY"}` with the site ID.
 
+When a local-account poll supplies a client fingerprint ID, the Devices page loads the corresponding artwork from Ubiquiti's `static.ui.com` CDN. The image request identifies the device model by its fingerprint ID and omits the page URL. Clients polled through the official Network integration API have no documented fingerprint field.
+
 ### Controller address at startup
 
 Set `unifi.dialIP` when the controller hostname depends on Marco’s discovery. This field accepts a fixed IPv4 or IPv6 address. Marco connects to that address on the port in `unifi.url` and uses the URL hostname for HTTP routing and TLS certificate verification.

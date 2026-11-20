@@ -129,12 +129,14 @@
 {{define "devices"}}
 <div class="toolbar spread">
   <form action="/devices" method="get" class="toolbar">
+    <input type="hidden" name="sort" value="{{.DeviceSort}}">
+    <input type="hidden" name="order" value="{{.DeviceOrder}}">
     <label>Search devices <input name="search" type="search" value="{{.DeviceSearch}}" placeholder="Name or IP"></label>
     <label>Presence
       <select name="presence">
         <option value="">All devices</option>
-        <option {{if eq .DeviceFilter "Connected at last poll"}}selected{{end}}>Connected at last poll</option>
-        <option {{if eq .DeviceFilter "Absent at last poll"}}selected{{end}}>Absent at last poll</option>
+        <option value="Connected at last poll" {{if eq .DeviceFilter "Connected at last poll"}}selected{{end}}>Connected</option>
+        <option value="Absent at last poll" {{if eq .DeviceFilter "Absent at last poll"}}selected{{end}}>Absent</option>
         <option {{if eq .DeviceFilter "Manual"}}selected{{end}}>Manual</option>
         <option {{if eq .DeviceFilter "Legacy observation"}}selected{{end}}>Legacy observation</option>
       </select>
@@ -143,7 +145,7 @@
   </form>
   <div class="toolbar">
     <a class="button" href="/devices/edit?new=1">Add manual device</a>
-    <form action="/devices/poll" method="post">
+    <form action="{{.DevicePollURL}}" method="post">
       <input type="hidden" name="csrf" value="{{.CSRF}}">
       <button type="submit" class="button primary">Poll UniFi</button>
     </form>
@@ -152,20 +154,31 @@
 <p class="mobile-table-note muted" id="device-scroll-help">Scroll the table to see more columns.</p>
 <div class="panel table-box" role="region" aria-label="Devices table" aria-describedby="device-scroll-help" tabindex="0">
   <table class="devices-table">
-    <thead><tr><th scope="col">Device</th><th scope="col">Addresses</th><th scope="col">Network</th><th scope="col">Policy</th><th scope="col">Last seen</th><th scope="col">Controller poll</th><th scope="col">Publication</th></tr></thead>
+    <thead><tr>
+      {{range .DeviceColumns}}
+      <th scope="col"{{with .Direction}} aria-sort="{{.}}"{{end}}>
+        <a class="device-sort" href="{{.URL}}">{{.Label}} <span aria-hidden="true">{{.Arrow}}</span></a>
+      </th>
+      {{end}}
+    </tr></thead>
     <tbody>
     {{range .Devices}}
       <tr>
         <th scope="row">
-          <a href="/devices/edit?id={{urlquery .ID}}">{{if .Canonical}}{{.Canonical}}{{else}}{{.ID}}{{end}}</a>
-          {{with .Reported}}<span class="secondary">{{.}}</span>{{end}}
-          {{with .MAC}}<span class="secondary">{{.}}</span>{{end}}
+          <div class="device-identity">
+            {{with .IconURL}}<span class="device-icon"><img src="{{.}}" alt="" loading="lazy" crossorigin="anonymous" referrerpolicy="no-referrer"></span>{{end}}
+            <div>
+              <a href="/devices/edit?id={{urlquery .ID}}">{{.DisplayName}}</a>
+              {{if and .Reported (ne .Reported .DisplayName)}}<span class="secondary">{{.Reported}}</span>{{end}}
+              {{with .MAC}}<span class="secondary">{{.}}</span>{{end}}
+            </div>
+          </div>
         </th>
-        <td>{{range .Addresses}}<span class="address">{{.IP}} <small>{{.Status}}</small></span>{{else}}—{{end}}</td>
+        <td>{{range .Addresses}}<span class="address">{{.IP}}{{with .Status}} <small>{{.}}</small>{{end}}</span>{{else}}—{{end}}</td>
         <td>{{label .Network}}</td>
         <td>{{label .Mode}}{{with .PolicyFrom}} <span class="secondary">{{.}}</span>{{end}}{{with .Assigned.Group}}<span class="secondary">Assigned to {{.}}</span>{{end}}</td>
         <td>{{age .LastSeen}}{{if not .LastSeen.IsZero}}<span class="secondary time">{{when .LastSeen}}</span>{{end}}</td>
-        <td>{{.Presence}}{{if not .LastPoll.IsZero}}<span class="secondary time" title="{{when .LastPoll}}">{{age .LastPoll}}</span>{{end}}</td>
+        <td{{with .PollTitle}} title="{{.}}"{{end}}>{{.PollLabel}}</td>
         <td>{{.Published}}</td>
       </tr>
     {{else}}<tr><td colspan="7" class="empty">No devices match these filters.</td></tr>{{end}}

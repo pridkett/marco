@@ -32,6 +32,9 @@ type page struct {
 	PollStatus                 []siteStatus
 	Devices                    []deviceRow
 	DeviceSearch, DeviceFilter string
+	DeviceSort, DeviceOrder    string
+	DeviceColumns              []deviceColumn
+	DevicePollURL              string
 	DeviceID, DeviceGroup      string
 	NewDevice                  bool
 	Subscriptions              []sourceRow
@@ -62,7 +65,7 @@ type deviceRow struct {
 }
 
 type deviceAddress struct {
-	IP     string
+	IP     netip.Addr
 	Status string
 }
 
@@ -115,6 +118,7 @@ func (s *server) page(w http.ResponseWriter, r *http.Request, session auth.Sessi
 		}
 		p.DeviceSearch, p.DeviceFilter = r.URL.Query().Get("search"), r.URL.Query().Get("presence")
 		p.Devices = s.deviceRows(state, p.DeviceSearch, p.DeviceFilter, now)
+		p.sortDevices(r.URL.Query().Get("sort"), r.URL.Query().Get("order"))
 	case "/devices/edit":
 		p.Title = "Edit device"
 		p.DeviceID = r.URL.Query().Get("id")
@@ -240,12 +244,6 @@ func (s *server) deviceRows(state config.State, search, filter string, now time.
 		}
 		rows = append(rows, row)
 	}
-	slices.SortFunc(rows, func(a, b deviceRow) int {
-		if cmp := strings.Compare(a.Canonical, b.Canonical); cmp != 0 {
-			return cmp
-		}
-		return strings.Compare(a.ID, b.ID)
-	})
 	return rows
 }
 
@@ -269,7 +267,7 @@ func (r deviceRow) matches(search string) bool {
 		}
 	}
 	for _, address := range r.Addresses {
-		if strings.Contains(address.IP, search) {
+		if strings.Contains(address.IP.String(), search) {
 			return true
 		}
 	}
@@ -290,17 +288,17 @@ func (s *server) deviceAddresses(row *deviceRow, now time.Time) {
 		case address.Superseded:
 			status = "Historical"
 		case address.Publish:
-			status = "Publishable"
+			status = ""
 			row.Published = "Publishable"
 		}
-		row.Addresses = append(row.Addresses, deviceAddress{address.IP.String(), status})
+		row.Addresses = append(row.Addresses, deviceAddress{address.IP, status})
 		if !effective.IsValid() && (address.Active || address.Publish) && !address.Conflicted && !address.Reassigned {
 			effective = address.IP
 		}
 	}
 	for _, ip := range row.Assigned.Pinned {
 		if !seen[ip.Unmap()] {
-			row.Addresses = append(row.Addresses, deviceAddress{ip.String(), "Pinned"})
+			row.Addresses = append(row.Addresses, deviceAddress{ip, "Pinned"})
 		}
 		if !effective.IsValid() {
 			effective = ip
