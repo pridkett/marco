@@ -6,6 +6,21 @@ Use a direct HTTPS bind with `admin.certFile` and `admin.keyFile`, or bind the b
 
 To add PocketID or another OIDC provider, configure `admin.issuer`, `admin.clientID`, `admin.clientSecret`, and `admin.adminGroup`. Register the callback URI formed by appending `/auth/callback` to the public URL. Use the provider's group claim for authorization. Leave the local password account configured for recovery during provider outages. A secret reference takes either `{"env":"ENV_NAME"}` or `{"file":"/run/secrets/name"}`. Restart the instance after rotating a hash with `marco password --out operator.hash`.
 
+### Wildcard HTTPS certificate
+
+Choose a hostname covered by the certificate, such as `marco.wagstrom.net` for a DNS-validated `*.wagstrom.net` certificate. Point that name at the admin listener using a DNS A or AAAA record. For direct HTTPS, merge these fields into the startup config’s `admin` object alongside its sign-in settings.
+
+```json
+{
+  "listen": "192.168.1.53:443",
+  "publicURL": "https://marco.wagstrom.net",
+  "certFile": "/run/secrets/wagstrom.net/fullchain.pem",
+  "keyFile": "/run/secrets/wagstrom.net/privkey.pem"
+}
+```
+
+Replace the listen address with the resolver’s LAN address. Give the service user read access to the mounted certificate chain and private key. Restart Marco after renewal so it reloads the PEM files. If a reverse proxy terminates TLS, install the wildcard certificate there and keep Marco on the trusted loopback backend using the same public URL.
+
 ## UniFi
 
 Set `unifi.controller` to a stable operator-assigned ID, `unifi.url` to the HTTPS controller origin, and `unifi.site` to the site ID. The `api-key` mode defaults to the UniFi OS Network integration path. Use `api-key-standalone` for a standalone controller. Provision `unifi.apiKey` with a read-only Network application key. Use `unifi.caFile` if the controller uses a private CA.

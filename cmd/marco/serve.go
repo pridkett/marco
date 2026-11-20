@@ -261,6 +261,7 @@ func startAdmin(ctx context.Context, s config.AdminSettings, handler http.Handle
 	if err != nil {
 		return nil, err
 	}
+	server.Addr = listener.Addr().String()
 	if s.CertFile != "" {
 		cert, err := tls.LoadX509KeyPair(s.CertFile, s.KeyFile)
 		if err != nil {
