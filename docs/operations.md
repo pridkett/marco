@@ -46,6 +46,21 @@ For local-account polling, add this section to `marco.json` and supply `UNIFI_PA
 
 Marco polls clients and adopted infrastructure immediately and every 60 seconds by default. For the official API, use `api-key` and set `"apiKey": {"env": "UNIFI_API_KEY"}` with the site ID.
 
+### Controller address at startup
+
+Set `unifi.dialIP` when the controller hostname depends on Marco’s discovery. This field accepts a fixed IPv4 or IPv6 address. Marco connects to that address on the port in `unifi.url` and uses the URL hostname for HTTP routing and TLS certificate verification.
+
+For example, merge these fields into the `unifi` section of `marco.json` and replace the example IP with the controller or HTTPS proxy's address.
+
+```json
+{
+  "url": "https://unifi.wagstrom.net/",
+  "dialIP": "192.0.2.10"
+}
+```
+
+Use `caFile` for a private CA. A manual `A` or `AAAA` record also works when the OS resolver queries Marco for that hostname. Marco publishes manual records before starting UniFi discovery.
+
 ## Offline migration
 
 Run with sanitized copies. To create a consistent PowerDNS backup, use SQLite's `.backup` command against the legacy database. Keep that copy separate from the running legacy service.

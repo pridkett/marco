@@ -221,7 +221,7 @@ func newUniFi(s config.UniFiSettings, update contract.Update) (*inventory.Worker
 		return nil, err
 	}
 	source, err := inventory.NewAdapter(inventory.Settings{Controller: s.Controller, URL: s.URL, Site: s.Site, Mode: s.Mode,
-		APIKey: key, Username: s.Username, Password: password, CACertFile: s.CAFile, PageSize: s.PageSize})
+		APIKey: key, Username: s.Username, Password: password, CACertFile: s.CAFile, PageSize: s.PageSize, DialIP: s.DialIP})
 	if err != nil {
 		return nil, err
 	}

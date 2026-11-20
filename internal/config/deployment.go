@@ -123,16 +123,25 @@ func (s AdminSettings) LocalUsername() string {
 }
 
 type UniFiSettings struct {
-	Controller string    `json:"controller"`
-	URL        string    `json:"url"`
-	Site       string    `json:"site"`
-	Mode       string    `json:"mode"`
-	APIKey     SecretRef `json:"apiKey"`
-	Username   string    `json:"username"`
-	Password   SecretRef `json:"password"`
-	CAFile     string    `json:"caFile"`
-	PageSize   int       `json:"pageSize"`
-	Interval   Duration  `json:"interval"`
+	Controller string     `json:"controller"`
+	URL        string     `json:"url"`
+	DialIP     netip.Addr `json:"dialIP"`
+	Site       string     `json:"site"`
+	Mode       string     `json:"mode"`
+	APIKey     SecretRef  `json:"apiKey"`
+	Username   string     `json:"username"`
+	Password   SecretRef  `json:"password"`
+	CAFile     string     `json:"caFile"`
+	PageSize   int        `json:"pageSize"`
+	Interval   Duration   `json:"interval"`
+}
+
+// ValidateUniFiDialIP accepts an optional fixed unicast address.
+func ValidateUniFiDialIP(ip netip.Addr) error {
+	if ip.IsValid() && !ip.IsGlobalUnicast() && !ip.IsLoopback() && !ip.IsLinkLocalUnicast() {
+		return errors.New("unifi.dialIP must be a unicast IP address")
+	}
+	return nil
 }
 
 type HistorySettings struct {
@@ -293,6 +302,12 @@ func (d Deployment) Validate() error {
 	}
 	if d.UniFi.URL != "" && (d.UniFi.Controller == "" || d.UniFi.Site == "") {
 		return errors.New("UniFi requires an explicit controller identity and site")
+	}
+	if d.UniFi.DialIP.IsValid() && d.UniFi.URL == "" {
+		return errors.New("unifi.dialIP requires unifi.url")
+	}
+	if err := ValidateUniFiDialIP(d.UniFi.DialIP); err != nil {
+		return err
 	}
 	if d.History.Enabled && (d.History.Queue < 1 || d.History.Queue > 65536 || d.History.MaxBytes < 1<<20) {
 		return errors.New("history requires a queue of 1–65536 and a limit of at least 1 MiB")

@@ -19,6 +19,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/pridkett/marco/internal/config"
 )
 
 const maxPageBytes = 8 << 20
@@ -31,6 +33,7 @@ type Adapter interface {
 type Settings struct {
 	Controller, URL, Site, APIKey, Username, Password, CACertFile, Mode string
 	PageSize                                                            int
+	DialIP                                                              netip.Addr
 }
 
 type adapter struct {
@@ -56,6 +59,9 @@ func NewAdapter(c Settings) (Adapter, error) {
 		u.User != nil || u.ForceQuery || u.RawQuery != "" || u.Fragment != "" ||
 		(u.Path != "" && u.Path != "/") {
 		return nil, errors.New("UniFi URL must be an HTTPS origin")
+	}
+	if err := config.ValidateUniFiDialIP(c.DialIP); err != nil {
+		return nil, err
 	}
 	if c.PageSize == 0 {
 		c.PageSize = 100
@@ -92,8 +98,21 @@ func NewAdapter(c Settings) (Adapter, error) {
 			return nil, errors.New("UniFi CA file contains no valid certificates")
 		}
 	}
+	dialer := &net.Dialer{Timeout: 5 * time.Second}
+	dial := dialer.DialContext
+	if c.DialIP.IsValid() {
+		// Override the socket destination while the HTTPS transport retains
+		// the URL hostname for HTTP routing, SNI, and certificate verification.
+		dial = func(ctx context.Context, network, address string) (net.Conn, error) {
+			_, port, err := net.SplitHostPort(address)
+			if err != nil {
+				return nil, err
+			}
+			return dialer.DialContext(ctx, network, net.JoinHostPort(c.DialIP.Unmap().String(), port))
+		}
+	}
 	transport := &http.Transport{
-		DialContext:       (&net.Dialer{Timeout: 5 * time.Second}).DialContext,
+		DialContext:       dial,
 		TLSClientConfig:   &tls.Config{MinVersion: tls.VersionTLS12, RootCAs: roots},
 		ForceAttemptHTTP2: true, MaxConnsPerHost: 2, MaxIdleConnsPerHost: 2,
 		IdleConnTimeout: 90 * time.Second, ResponseHeaderTimeout: 8 * time.Second,

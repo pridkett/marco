@@ -7,10 +7,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -29,8 +32,13 @@ func certFile(t *testing.T, server *httptest.Server) string {
 }
 
 func TestOfficialAdapterCompletePageAndPartialPoll(t *testing.T) {
+	const controllerHost = "unifi.example.com"
 	var failPage atomic.Bool
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		host, _, err := net.SplitHostPort(r.Host)
+		if err != nil || host != controllerHost || r.TLS.ServerName != controllerHost {
+			t.Errorf("unexpected HTTP host %q or TLS server name %q", r.Host, r.TLS.ServerName)
+		}
 		if r.Method != http.MethodGet || r.Header.Get("X-API-Key") != "fixture-key" {
 			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
 			w.WriteHeader(http.StatusUnauthorized)
@@ -53,7 +61,12 @@ func TestOfficialAdapterCompletePageAndPartialPoll(t *testing.T) {
 		}
 	}))
 	defer server.Close()
-	cfg := Settings{Controller: "fixture-controller", Site: "fixture", URL: server.URL,
+	ip, port, err := net.SplitHostPort(server.Listener.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := Settings{Controller: "fixture-controller", Site: "fixture",
+		URL: "https://" + net.JoinHostPort(controllerHost, port), DialIP: netip.MustParseAddr(ip),
 		APIKey: "fixture-key", PageSize: 1, CACertFile: certFile(t, server)}
 	a, err := NewAdapter(cfg)
 	if err != nil {
@@ -73,6 +86,16 @@ func TestOfficialAdapterCompletePageAndPartialPoll(t *testing.T) {
 	failPage.Store(true)
 	if partial, err := a.Poll(t.Context()); err == nil || partial.Complete || len(partial.Observations) != 0 {
 		t.Fatalf("partial snapshot escaped: %+v: %v", partial, err)
+	}
+
+	wrongHost := cfg
+	wrongHost.URL = "https://" + net.JoinHostPort("unifi.invalid", port)
+	wrongName, err := NewAdapter(wrongHost)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = wrongName.Poll(t.Context()); err == nil || !strings.Contains(err.Error(), "UniFi TLS certificate verification failed") {
+		t.Fatalf("fixed dial accepted a certificate for a different hostname: %v", err)
 	}
 
 	cfg.CACertFile = ""
