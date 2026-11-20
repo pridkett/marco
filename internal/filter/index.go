@@ -165,6 +165,9 @@ func Parse(body []byte, source config.Subscription) (*SubscriptionIndex, int, er
 		if len(fields) > 1 {
 			if _, err := netip.ParseAddr(fields[0]); err == nil {
 				for _, owner := range fields[1:] {
+					if strings.HasPrefix(owner, "#") {
+						break
+					}
 					rule, err := ParseRule(owner)
 					if err != nil || rule.Suffix || rule.Allow {
 						recordProblem("invalid hosts owner")

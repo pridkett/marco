@@ -24,12 +24,13 @@ func TestAdGuardDNSPatterns(t *testing.T) {
 ||disabled.test^
 ||disabled.test^$badfilter
 `)
+	data = append(data, []byte("0.0.0.0 hosts.test\t# comment\n")...)
 	index, count, err := Parse(data, source)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if count != 10 {
-		t.Fatalf("got %d usable rules, want 10", count)
+	if count != 11 {
+		t.Fatalf("got %d usable rules, want 11", count)
 	}
 	for _, tc := range []struct {
 		name         string
@@ -48,6 +49,8 @@ func TestAdGuardDNSPatterns(t *testing.T) {
 		{"tracker12.regex.test.", true, false},
 		{"tracker123.regex.test.", false, false},
 		{"192.0.2.45.", true, false},
+		{"hosts.test.", true, false},
+		{"sub.hosts.test.", false, false},
 		{"disabled.test.", false, false},
 	} {
 		if got := index.Match(tc.name, true); got.Found != tc.found || got.Allow != tc.allow {
