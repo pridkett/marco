@@ -61,7 +61,7 @@ func TestPolicyPrecedenceAndIdentityExpiry(t *testing.T) {
 	for name, blocked := range map[string]bool{
 		"video.test.": false, "x.listed.test.": true, "x.allowed.listed.test.": false, "exact.test.": true, "x.exact.test.": false, "notlisted.test.": false,
 	} {
-		if got := e.External(child, name, now); got.Blocked != blocked {
+		if got := e.External(child, name, 1, now); got.Blocked != blocked {
 			t.Fatalf("external decision for %s = %+v", name, got)
 		}
 	}

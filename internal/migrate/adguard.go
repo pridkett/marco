@@ -280,15 +280,20 @@ func (p *importer) guardServices(loc string, source guardServices) *[]string {
 		_, exists := p.Desired.Services[id]
 		if !exists {
 			service, ok := p.options.Disposition.Services[id]
-			if !ok {
+			_, builtIn := p.options.BuiltInServices[id]
+			switch {
+			case ok:
+				if p.Desired.Services == nil {
+					p.Desired.Services = map[string]config.Service{}
+				}
+				p.Desired.Services[id] = service
+				p.accept(loc, "mapped custom service "+id)
+			case builtIn:
+				p.accept(loc, "mapped catalog service "+id)
+			default:
 				p.unsupported(loc, "unmapped service "+id)
 				continue
 			}
-			if p.Desired.Services == nil {
-				p.Desired.Services = map[string]config.Service{}
-			}
-			p.Desired.Services[id] = service
-			p.accept(loc, "mapped custom service "+id)
 		}
 		if !slices.Contains(names, id) {
 			names = append(names, id)

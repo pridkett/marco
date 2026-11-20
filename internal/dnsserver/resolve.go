@@ -145,7 +145,7 @@ func externalRule(policies contract.Policies, selection contract.Selection, in c
 	if manual.Blocked || manual.Allowed || selection.Policy.Mode == config.Unfiltered {
 		return manual
 	}
-	return policies.External(selection, name, in.Time)
+	return policies.External(selection, name, in.Type, in.Time)
 }
 
 func copyRecords(in []dns.RR) []dns.RR {

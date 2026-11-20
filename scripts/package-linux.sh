@@ -26,6 +26,7 @@ cp README.md SPEC.md "$package/"
 cp examples/marco*.json "$package/examples/"
 cp -R examples/lists "$package/examples/"
 cp docs/*.md "$package/docs/"
+cp -R catalog "$package/"
 
 go list -deps -f '{{with .Module}}{{if not .Main}}{{.Path}}{{end}}{{end}}' ./cmd/marco > "$staging/modules"
 sort -u "$staging/modules" > "$staging/unique"

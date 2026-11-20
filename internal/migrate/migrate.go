@@ -19,6 +19,7 @@ type Options struct {
 	DesiredPath, StatePath, ScraperPath, PowerDNSPath, AdGuardPath string
 	Disposition                                                    Disposition
 	ReplaceDesired                                                 bool
+	BuiltInServices                                                map[string]config.Service
 }
 
 type Disposition struct {

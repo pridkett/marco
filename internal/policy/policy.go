@@ -56,7 +56,7 @@ type Engine struct {
 	globalRules   manual
 	groupRules    map[string]manual
 	deviceRules   map[string]manual
-	services      map[string]filter.Index
+	services      map[string]*filter.ServiceIndex
 	feeds         map[string]feed
 }
 
@@ -72,7 +72,7 @@ func Compile(state *config.State, previous *Engine) (*Engine, error) {
 		assignments:   make(map[string]manual),
 		groupRules:    make(map[string]manual),
 		deviceRules:   make(map[string]manual),
-		services:      make(map[string]filter.Index),
+		services:      make(map[string]*filter.ServiceIndex),
 		feeds:         make(map[string]feed),
 	}
 	var err error
@@ -130,15 +130,9 @@ func Compile(state *config.State, previous *Engine) (*Engine, error) {
 		}
 	}
 	for _, name := range slices.Sorted(maps.Keys(c.Services)) {
-		service := c.Services[name]
-		index := make(filter.Index)
-		for _, rule := range service.Domains {
-			if rule.Allow {
-				return nil, fmt.Errorf("service %q contains an allow rule", name)
-			}
-			if err := index.Add(rule); err != nil {
-				return nil, fmt.Errorf("service %q: %w", name, err)
-			}
+		index, err := filter.CompileService(c.Services[name])
+		if err != nil {
+			return nil, fmt.Errorf("service %q: %w", name, err)
 		}
 		e.services[name] = index
 	}
@@ -328,13 +322,13 @@ func (e *Engine) Manual(s contract.Selection, name string) contract.Decision {
 	return contract.Decision{}
 }
 
-func (e *Engine) External(s contract.Selection, name string, _ time.Time) contract.Decision {
+func (e *Engine) External(s contract.Selection, name string, qtype uint16, _ time.Time) contract.Decision {
 	if s.Policy.Mode != config.Filtered {
 		return contract.Decision{}
 	}
 	if s.Policy.Services != nil {
 		for _, id := range *s.Policy.Services {
-			if match := e.services[id].Match(name, false); match.Found {
+			if match := e.ServiceMatch(id, name, qtype); match.Found {
 				return contract.Decision{Blocked: true, Reason: "service-block", Rule: id + "/" + match.Name}
 			}
 		}
@@ -358,6 +352,10 @@ func (e *Engine) External(s contract.Selection, name string, _ time.Time) contra
 		return contract.Decision{Allowed: true, Reason: "subscription-allow", Rule: reference}
 	}
 	return contract.Decision{Blocked: true, Reason: "subscription-block", Rule: reference}
+}
+
+func (e *Engine) ServiceMatch(id, name string, qtype uint16) filter.Match {
+	return e.services[id].Match(name, qtype)
 }
 
 func Validate(c config.Desired) error {
@@ -436,7 +434,7 @@ func Validate(c config.Desired) error {
 		}
 	}
 	for id, svc := range c.Services {
-		if strings.TrimSpace(id) == "" || strings.TrimSpace(svc.Version) == "" || len(svc.Domains) == 0 {
+		if strings.TrimSpace(id) == "" || strings.TrimSpace(svc.Version) == "" || len(svc.Domains)+len(svc.Rules) == 0 {
 			return fmt.Errorf("service %q needs an ID, version and domains", id)
 		}
 	}

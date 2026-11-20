@@ -57,7 +57,7 @@ type Decision struct {
 type Policies interface {
 	Select(netip.Addr, time.Time) Selection
 	Manual(Selection, string) Decision
-	External(Selection, string, time.Time) Decision
+	External(Selection, string, uint16, time.Time) Decision
 }
 
 type LocalResult struct {

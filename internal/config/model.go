@@ -78,8 +78,9 @@ type Endpoint struct {
 }
 
 type Service struct {
-	Version string `json:"version"`
-	Domains []Rule `json:"domains"`
+	Version string   `json:"version"`
+	Domains []Rule   `json:"domains,omitempty"`
+	Rules   []string `json:"rules,omitempty"`
 }
 
 const AdGuardFormat = "adguard"

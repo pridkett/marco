@@ -30,6 +30,7 @@ func migrateCommand(ctx context.Context, args []string, out io.Writer) error {
 	if err != nil {
 		return err
 	}
+	options.BuiltInServices = d.Catalog.Definitions()
 	if *decisions != "" {
 		if err := config.ReadJSON(*decisions, &options.Disposition); err != nil {
 			return err

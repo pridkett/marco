@@ -63,7 +63,7 @@ func TestPublicationSurvivesFailedUpdatesAndRestart(t *testing.T) {
 		t.Helper()
 		policies := pub.View().Policies
 		sel := policies.Select(netip.MustParseAddr("192.0.2.101"), time.Now())
-		if decision := policies.External(sel, name, time.Now()); decision.Blocked != blocked {
+		if decision := policies.External(sel, name, dns.TypeA, time.Now()); decision.Blocked != blocked {
 			t.Fatalf("%s = %+v, want blocked=%t", name, decision, blocked)
 		}
 	}

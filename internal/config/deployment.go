@@ -154,16 +154,18 @@ type HistorySettings struct {
 }
 
 type Deployment struct {
-	Node         string           `json:"node"`
-	DataDir      string           `json:"dataDir"`
-	Initial      string           `json:"initialConfig"`
-	DNS          DNSSettings      `json:"dns"`
-	Upstream     UpstreamSettings `json:"upstream"`
-	Admin        AdminSettings    `json:"admin"`
-	UniFi        UniFiSettings    `json:"unifi"`
-	History      HistorySettings  `json:"history"`
-	ListDir      string           `json:"listDirectory"`
-	ListInterval Duration         `json:"listInterval"`
+	Node               string           `json:"node"`
+	DataDir            string           `json:"dataDir"`
+	Initial            string           `json:"initialConfig"`
+	DNS                DNSSettings      `json:"dns"`
+	Upstream           UpstreamSettings `json:"upstream"`
+	Admin              AdminSettings    `json:"admin"`
+	UniFi              UniFiSettings    `json:"unifi"`
+	History            HistorySettings  `json:"history"`
+	ListDir            string           `json:"listDirectory"`
+	ListInterval       Duration         `json:"listInterval"`
+	ServiceCatalogPath string           `json:"serviceCatalog"`
+	Catalog            *ServiceCatalog  `json:"-"`
 }
 
 func ReadDeployment(file string) (Deployment, error) {
@@ -184,12 +186,19 @@ func ReadDeployment(file string) (Deployment, error) {
 		return d, err
 	}
 	for _, name := range []*string{&d.DataDir, &d.Initial, &d.ListDir, &d.Admin.KeyFile, &d.Admin.CertFile, &d.Admin.PasswordHash.File,
-		&d.Admin.ClientSecret.File, &d.UniFi.CAFile, &d.UniFi.Password.File, &d.UniFi.APIKey.File, &d.Upstream.CAFile, &d.History.AnonymizationKey.File} {
+		&d.ServiceCatalogPath, &d.Admin.ClientSecret.File, &d.UniFi.CAFile, &d.UniFi.Password.File, &d.UniFi.APIKey.File, &d.Upstream.CAFile, &d.History.AnonymizationKey.File} {
 		if *name != "" && !filepath.IsAbs(*name) {
 			*name = filepath.Join(base, *name)
 		}
 	}
-	return d, d.Validate()
+	if err := d.Validate(); err != nil {
+		return d, err
+	}
+	d.Catalog, err = readCatalog(d.ServiceCatalogPath, base)
+	if err != nil {
+		return d, fmt.Errorf("load service catalog: %w", err)
+	}
+	return d, nil
 }
 
 func ReadJSON(file string, v any) error {

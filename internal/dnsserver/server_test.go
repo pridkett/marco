@@ -41,7 +41,7 @@ func (f fixturePolicies) Manual(_ contract.Selection, name string) contract.Deci
 	return f.allows[name]
 }
 
-func (f fixturePolicies) External(_ contract.Selection, name string, _ time.Time) contract.Decision {
+func (f fixturePolicies) External(_ contract.Selection, name string, _ uint16, _ time.Time) contract.Decision {
 	return f.blocks[name]
 }
 

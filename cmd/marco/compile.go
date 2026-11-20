@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"net/netip"
 	"net/url"
 	"os"
@@ -43,8 +44,13 @@ func newCompiler(deployment config.Deployment) (runtime.Compiler, error) {
 	}
 	options := upstream.Options{Deadline: time.Duration(s.Deadline), CacheEntries: s.CacheEntries,
 		CacheTTL: time.Duration(s.CacheTTL), MaxConnections: s.MaxConnections, BootstrapResolver: s.Resolver(), TLSRoots: roots}
+	builtIn := deployment.Catalog.Definitions()
 	return func(state *config.State, previous *contract.View) (*contract.View, error) {
 		d := state.Desired
+		if len(builtIn) > 0 {
+			d.Services = maps.Clone(builtIn)
+			maps.Copy(d.Services, state.Desired.Services)
+		}
 		if d.Version != config.Version {
 			return nil, fmt.Errorf("configuration version %d is unsupported", d.Version)
 		}
@@ -83,7 +89,9 @@ func newCompiler(deployment config.Deployment) (runtime.Compiler, error) {
 			lastPolicy, _ = previous.Policies.(*policy.Engine)
 			lastUpstream, _ = previous.Upstream.(*forwarder)
 		}
-		rules, err := policy.Compile(state, lastPolicy)
+		policyState := *state
+		policyState.Desired.Services = d.Services
+		rules, err := policy.Compile(&policyState, lastPolicy)
 		if err != nil {
 			return nil, err
 		}
