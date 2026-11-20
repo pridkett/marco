@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/netip"
 	"net/url"
 	"path/filepath"
 	"strings"
@@ -272,7 +273,7 @@ func (l *Log) flush(ctx context.Context, batch []contract.Event) error {
 			if e.Time.UnixNano() < cutoff {
 				continue
 			}
-			if _, err := stmt.ExecContext(ctx, e.Time.UnixNano(), limitText(e.Node, 128), l.client(e), limitText(e.Name, 255),
+			if _, err := stmt.ExecContext(ctx, e.Time.UnixNano(), limitText(e.Node, 128), l.ClientID(e.Peer), limitText(e.Name, 255),
 				e.Type, e.RCode, limitText(e.Origin, 32), limitText(e.Reason, 64), limitText(e.Rule, 128), limitText(e.Cache, 32),
 				e.Latency.Microseconds()); err != nil {
 				return err
@@ -310,11 +311,12 @@ func (l *Log) makeRoom(ctx context.Context, tx *sql.Tx, batch int) error {
 	return nil
 }
 
-func (l *Log) client(e contract.Event) string {
-	if !e.Peer.IsValid() {
+// ClientID returns the address or pseudonym stored for a query peer.
+func (l *Log) ClientID(peer netip.Addr) string {
+	if !peer.IsValid() {
 		return ""
 	}
-	ip := e.Peer.Unmap().String()
+	ip := peer.Unmap().String()
 	if !l.settings.Anonymize {
 		return ip
 	}

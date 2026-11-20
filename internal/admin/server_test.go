@@ -381,7 +381,8 @@ func TestDevicesSortAndDisplay(t *testing.T) {
 	body := page.Body.String()
 	if strings.Index(body, ">lab-desk</a>") >= strings.Index(body, ">lab-camera</a>") ||
 		strings.Contains(body, ">lab-old</a>") || strings.Contains(body, "<small>Publishable</small>") ||
-		strings.Count(body, `class="device-sort"`) != 7 || strings.Count(body, `aria-sort=`) != 1 {
+		strings.Contains(body, "Controller poll") || strings.Contains(body, `class="secondary time"`) ||
+		strings.Count(body, `class="device-sort"`) != 6 || strings.Count(body, `aria-sort=`) != 1 {
 		t.Fatalf("unexpected sorted address table: %s", body)
 	}
 	if !strings.Contains(page.Header().Get("Content-Security-Policy"), "img-src 'self' "+unifiArtworkOrigin) {
@@ -391,7 +392,7 @@ func TestDevicesSortAndDisplay(t *testing.T) {
 		"/devices?sort=addresses&order=desc", "/devices?sort=seen", "/devices?sort=unknown&order=desc",
 	} {
 		page := request(f.handler, "GET", path, nil, f.cookie)
-		checkContent(t, page, ">lab-camera</a>", ">lab-desk</a>", ">Last connected 2 hours ago</td>")
+		checkContent(t, page, ">lab-camera</a>", ">lab-desk</a>", `>2 hours ago<span class="secondary time">`+dateTime(f.state.Devices["old"].LastConnected))
 		if body := page.Body.String(); strings.Index(body, ">lab-camera</a>") >= strings.Index(body, ">lab-desk</a>") {
 			t.Errorf("%s did not put lab-camera first", path)
 		}
@@ -402,6 +403,45 @@ func TestDevicesSortAndDisplay(t *testing.T) {
 	if !strings.Contains(page.Header().Get("Content-Security-Policy"), unifiArtworkOrigin) {
 		t.Fatal("poll response CSP does not allow UniFi artwork")
 	}
+}
+
+func TestDeviceQueryLogLinks(t *testing.T) {
+	f := setup(t)
+	cam := f.state.Devices["cam-01"]
+	cam.Addresses = []config.Address{
+		{IP: netip.MustParseAddr("192.0.2.2"), Active: true},
+		{IP: netip.MustParseAddr("192.0.2.3"), Reassigned: true},
+		{IP: netip.MustParseAddr("192.0.2.4"), Conflicted: true},
+		{IP: netip.MustParseAddr("192.0.2.5"), Superseded: true},
+	}
+	f.state.Devices[cam.ID] = cam
+	f.login(t)
+
+	const singleClient = "/query-log?client=192.0.2.2"
+	checkContent(t, request(f.handler, http.MethodGet, "/devices", nil, f.cookie), `href="`+singleClient+`"`)
+	single := request(f.handler, http.MethodGet, singleClient, nil, f.cookie)
+	checkContent(t, single, "blocked.test.")
+	if strings.Contains(single.Body.String(), "js.monitor.azure.com.") {
+		t.Fatal("device query log included another client")
+	}
+
+	settings := f.state.Desired.Devices[cam.ID]
+	settings.Pinned = []netip.Addr{netip.MustParseAddr("2001:db8::2"), netip.MustParseAddr("192.0.2.4")}
+	f.state.Desired.Devices[cam.ID] = settings
+
+	const link = "/query-log?client=192.0.2.2%2C2001%3Adb8%3A%3A2"
+	for _, path := range []string{"/devices", "/devices/edit?id=cam-01"} {
+		checkContent(t, request(f.handler, http.MethodGet, path, nil, f.cookie), `href="`+link+`"`)
+	}
+	checkContent(t, request(f.handler, http.MethodGet, link, nil, f.cookie),
+		`name="client" placeholder="IPs or client IDs" value="192.0.2.2,2001:db8::2"`, "blocked.test.", "js.monitor.azure.com.")
+	filtered := request(f.handler, http.MethodGet, link+"&outcome=Blocked", nil, f.cookie)
+	checkContent(t, filtered, "blocked.test.")
+	if strings.Contains(filtered.Body.String(), "js.monitor.azure.com.") {
+		t.Fatal("device query log ignored the outcome filter")
+	}
+	checkContent(t, request(f.handler, http.MethodGet, "/devices?search=no-such-device", nil, f.cookie),
+		`colspan="6" class="empty">No devices match these filters.`)
 }
 
 func TestQueryHistorySummaryAndDetails(t *testing.T) {
