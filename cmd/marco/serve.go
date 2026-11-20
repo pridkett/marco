@@ -229,11 +229,18 @@ func newUniFi(s config.UniFiSettings, update contract.Update) (*inventory.Worker
 }
 
 func openAuth(ctx context.Context, db *store.Store, s config.AdminSettings) (*auth.Manager, error) {
-	hash, localErr := s.PasswordHash.Resolve("local admin password hash")
+	var hash string
+	var localErr error
+	if password := []byte(os.Getenv(config.AdminPasswordEnv)); len(password) > 0 {
+		hash, localErr = auth.HashEnvironmentPassword(ctx, db, password)
+		clear(password)
+	} else {
+		hash, localErr = s.PasswordHash.Resolve("local admin password hash")
+	}
 	secret, oidcErr := s.ClientSecret.Resolve("OIDC client secret")
 	settings := auth.Settings{PublicURL: s.PublicURL, TrustedProxies: s.TrustedProxies, SessionTTL: time.Duration(s.SessionTTL)}
-	if localErr == nil {
-		settings.Username, settings.PasswordHash = s.Username, hash
+	if localErr == nil && hash != "" {
+		settings.Username, settings.PasswordHash = s.LocalUsername(), hash
 	}
 	if oidcErr == nil {
 		settings.Issuer, settings.ClientID, settings.ClientSecret, settings.AdminGroup = s.Issuer, s.ClientID, secret, s.AdminGroup

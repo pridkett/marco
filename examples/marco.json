@@ -12,7 +12,7 @@
     "publicURL": "https://localhost:8443",
     "certFile": "admin-cert.pem",
     "keyFile": "admin-key.pem",
-    "username": "operator",
-    "passwordHash": {"file": "operator.hash"}
+    "username": "admin",
+    "passwordHash": {"file": "admin.hash"}
   }
 }

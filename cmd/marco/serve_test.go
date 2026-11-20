@@ -11,6 +11,7 @@ import (
 	"math/big"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"path/filepath"
 	"testing"
 	"time"
@@ -20,6 +21,84 @@ import (
 	"github.com/pridkett/marco/internal/config"
 	"github.com/pridkett/marco/internal/store"
 )
+
+func TestAdminEnvironmentCredentials(t *testing.T) {
+	t.Setenv(config.AdminPasswordEnv, "demo")
+	t.Setenv(config.AdminUsernameEnv, "env-admin")
+	ctx := t.Context()
+	dir := t.TempDir()
+	db, err := store.Open(ctx, dir, config.Defaults())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	settings := config.AdminSettings{
+		PublicURL: "https://admin.test", Username: "configured-admin",
+		PasswordHash: config.SecretRef{File: filepath.Join(dir, "missing.hash")},
+	}
+	manager, err := openAuth(ctx, db, settings)
+	if err != nil {
+		t.Fatal(err)
+	}
+	login := httptest.NewRecorder()
+	csrf, err := manager.LoginToken(login, httptest.NewRequest(http.MethodGet, settings.PublicURL+"/login", nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	post := httptest.NewRequest(http.MethodPost, settings.PublicURL+"/login", nil)
+	for _, cookie := range login.Result().Cookies() {
+		post.AddCookie(cookie)
+	}
+	signedIn := httptest.NewRecorder()
+	if err := manager.LoginLocal(signedIn, post, "env-admin", "demo", csrf); err != nil {
+		t.Fatal(err)
+	}
+	request := httptest.NewRequest(http.MethodGet, settings.PublicURL, nil)
+	for _, cookie := range signedIn.Result().Cookies() {
+		if cookie.MaxAge > 0 {
+			request.AddCookie(cookie)
+		}
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := store.Open(ctx, dir, config.Defaults())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+	manager, err = openAuth(ctx, reopened, settings)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if session, valid := manager.Session(request); !valid || session.Account != "local:env-admin" {
+		t.Fatalf("environment-backed session lost after restart: %+v", session)
+	}
+	t.Setenv(config.AdminPasswordEnv, "new-password")
+	manager, err = openAuth(ctx, reopened, settings)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, valid := manager.Session(request); valid {
+		t.Fatal("session survived a password change")
+	}
+}
+
+func TestUniFiLocalAccountPasswordFromEnvironment(t *testing.T) {
+	const name = "UNIFI_PASSWORD"
+	t.Setenv(name, "")
+	settings := config.UniFiSettings{
+		Controller: "home", URL: "https://unifi.test", Site: "default", Mode: "local-account",
+		Username: "test-reader", Password: config.SecretRef{Env: name},
+	}
+	if _, err := newUniFi(settings, nil); err == nil {
+		t.Fatal("accepted a missing UniFi password")
+	}
+	t.Setenv(name, "fixture")
+	if worker, err := newUniFi(settings, nil); err != nil || worker == nil {
+		t.Fatalf("could not set up UniFi polling with an environment password: %v", err)
+	}
+}
 
 func TestAdminTLSWithWildcardCertificate(t *testing.T) {
 	ctx := t.Context()

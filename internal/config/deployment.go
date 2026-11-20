@@ -106,6 +106,22 @@ type AdminSettings struct {
 	SessionTTL     Duration       `json:"sessionTTL"`
 }
 
+const (
+	DefaultAdminUsername = "admin"
+	AdminUsernameEnv     = "MARCO_ADMIN_USERNAME"
+	AdminPasswordEnv     = "MARCO_ADMIN_PASSWORD"
+)
+
+func (s AdminSettings) LocalUsername() string {
+	if username := os.Getenv(AdminUsernameEnv); username != "" {
+		return username
+	}
+	if s.Username != "" {
+		return s.Username
+	}
+	return DefaultAdminUsername
+}
+
 type UniFiSettings struct {
 	Controller string    `json:"controller"`
 	URL        string    `json:"url"`
@@ -260,8 +276,9 @@ func (d Deployment) Validate() error {
 		if err := validatePrefixes("admin.trustedProxies", d.Admin.TrustedProxies); err != nil {
 			return err
 		}
-		if (d.Admin.Username != "") != d.Admin.PasswordHash.Set() {
-			return errors.New("local admin requires both username and password hash reference")
+		localPassword := d.Admin.PasswordHash.Set() || os.Getenv(AdminPasswordEnv) != ""
+		if d.Admin.Username != "" && !localPassword {
+			return errors.New("local admin requires a password hash reference or " + AdminPasswordEnv)
 		}
 		if d.Admin.Issuer == "" {
 			if d.Admin.ClientID != "" || d.Admin.ClientSecret.Set() || d.Admin.AdminGroup != "" {
@@ -270,7 +287,7 @@ func (d Deployment) Validate() error {
 		} else if d.Admin.AdminGroup == "" || d.Admin.ClientID == "" || !d.Admin.ClientSecret.Set() {
 			return errors.New("OIDC requires client ID, client secret reference and admin group")
 		}
-		if d.Admin.Username == "" && d.Admin.Issuer == "" {
+		if !localPassword && d.Admin.Issuer == "" {
 			return errors.New("configure a local account or an OIDC provider to enable admin")
 		}
 	}

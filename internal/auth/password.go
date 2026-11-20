@@ -2,8 +2,10 @@ package auth
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
 	"crypto/subtle"
+	"database/sql"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -26,18 +28,57 @@ const (
 const hashPrefix = "$argon2id$v=19$m=19456,t=2,p=1$"
 
 func HashPassword(password []byte) (string, error) {
-	if len(password) == 0 {
-		return "", errors.New("password cannot be empty")
-	}
-	if len(password) > maxPassword {
-		return "", fmt.Errorf("password exceeds %d bytes", maxPassword)
+	if err := validatePassword(password); err != nil {
+		return "", err
 	}
 	salt := make([]byte, saltSize)
 	if _, err := rand.Read(salt); err != nil {
 		return "", err
 	}
+	return encodePassword(password, salt), nil
+}
+
+// HashEnvironmentPassword uses an instance-specific salt so local sessions
+// remain valid across restarts with the same credentials.
+func HashEnvironmentPassword(ctx context.Context, store Store, password []byte) (string, error) {
+	if err := validatePassword(password); err != nil {
+		return "", err
+	}
+	var salt []byte
+	err := store.Write(ctx, func(tx *sql.Tx) error {
+		if _, err := tx.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS admin_password_salt (
+			id INTEGER PRIMARY KEY CHECK (id = 1), salt BLOB NOT NULL CHECK (length(salt) = 16)
+		)`); err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO admin_password_salt VALUES (1, randomblob(16))`); err != nil {
+			return err
+		}
+		return tx.QueryRowContext(ctx, "SELECT salt FROM admin_password_salt WHERE id = 1").Scan(&salt)
+	})
+	if err != nil {
+		return "", fmt.Errorf("initialize local password salt: %w", err)
+	}
+	if len(salt) != saltSize {
+		return "", errors.New("invalid local password salt")
+	}
+	return encodePassword(password, salt), nil
+}
+
+func validatePassword(password []byte) error {
+	if len(password) == 0 {
+		return errors.New("password cannot be empty")
+	}
+	if len(password) > maxPassword {
+		return fmt.Errorf("password exceeds %d bytes", maxPassword)
+	}
+	return nil
+}
+
+func encodePassword(password, salt []byte) string {
 	digest := argon2.IDKey(password, salt, passwordTime, passwordMemory, passwordLanes, passwordSize)
-	return hashPrefix + base64.RawStdEncoding.EncodeToString(salt) + "$" + base64.RawStdEncoding.EncodeToString(digest), nil
+	defer clear(digest)
+	return hashPrefix + base64.RawStdEncoding.EncodeToString(salt) + "$" + base64.RawStdEncoding.EncodeToString(digest)
 }
 
 func PromptPassword() (string, error) {

@@ -4,7 +4,9 @@
 
 Use a direct HTTPS bind with `admin.certFile` and `admin.keyFile`, or bind the backend to loopback and set `admin.trustedProxies` to the reverse proxy's exact source CIDRs. Set `X-Forwarded-Host` and `X-Forwarded-Proto` at the trusted proxy and overwrite incoming values. Set `X-Real-IP` to the transport peer for per-client sign-in rate limiting. The public URL must match the browser origin. The DNS CIDR ACL is independent of admin access.
 
-To add PocketID or another OIDC provider, configure `admin.issuer`, `admin.clientID`, `admin.clientSecret`, and `admin.adminGroup`. Register the callback URI formed by appending `/auth/callback` to the public URL. Use the provider's group claim for authorization. Leave the local password account configured for recovery during provider outages. A secret reference takes either `{"env":"ENV_NAME"}` or `{"file":"/run/secrets/name"}`. Restart the instance after rotating a hash with `marco password --out operator.hash`.
+The local username defaults to `admin` when a password is configured. `MARCO_ADMIN_USERNAME` overrides `admin.username`. A non-empty `MARCO_ADMIN_PASSWORD` takes precedence over `admin.passwordHash`. Marco hashes the environment password in memory at startup. Supply the variable through the process environment or your service manager’s secret configuration. Restart Marco to pick up credential changes.
+
+To add PocketID or another OIDC provider, configure `admin.issuer`, `admin.clientID`, `admin.clientSecret`, and `admin.adminGroup`. Register the callback URI formed by appending `/auth/callback` to the public URL. Use the provider's group claim for authorization. Leave the local password account configured for recovery during provider outages. A secret reference takes either `{"env":"ENV_NAME"}` or `{"file":"/run/secrets/name"}`. Restart the instance after rotating a hash with `marco password --out admin.hash`.
 
 ### Wildcard HTTPS certificate
 
@@ -26,6 +28,23 @@ Replace the listen address with the resolver’s LAN address. Give the service u
 Set `unifi.controller` to a stable operator-assigned ID, `unifi.url` to the HTTPS controller origin, and `unifi.site` to the site ID. The `api-key` mode defaults to the UniFi OS Network integration path. Use `api-key-standalone` for a standalone controller. Provision `unifi.apiKey` with a read-only Network application key. Use `unifi.caFile` if the controller uses a private CA.
 
 Confirm that the deployed firmware's clients and adopted devices endpoints return the expected devices and IP fields. If official API coverage is incomplete, use `local-account` on UniFi OS or `local-account-standalone` on a standalone Network application, set the legacy site name, and provision `unifi.username` and `unifi.password`. Marco preserves the last usable published data through incomplete polls and controller failures.
+
+For local-account polling, add this section to `marco.json` and supply `UNIFI_PASSWORD` in the service environment. Use a UniFi account with read-only access to the Network site. Replace `default` if your site has a different legacy name.
+
+```json
+{
+  "unifi": {
+    "mode": "local-account",
+    "controller": "home",
+    "url": "https://unifi.example.net",
+    "site": "default",
+    "username": "marco-reader",
+    "password": {"env": "UNIFI_PASSWORD"}
+  }
+}
+```
+
+Marco polls clients and adopted infrastructure immediately and every 60 seconds by default. For the official API, use `api-key` and set `"apiKey": {"env": "UNIFI_API_KEY"}` with the site ID.
 
 ## Offline migration
 

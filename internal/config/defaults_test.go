@@ -7,6 +7,29 @@ import (
 	"testing"
 )
 
+func TestLocalAdminDefaultsAndEnvironment(t *testing.T) {
+	t.Setenv(AdminUsernameEnv, "")
+	t.Setenv(AdminPasswordEnv, "")
+	d, err := ReadDeployment("../../examples/marco.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.Admin.LocalUsername() != "admin" {
+		t.Fatalf("unexpected sample username %q", d.Admin.LocalUsername())
+	}
+	d.Admin.Username, d.Admin.PasswordHash = "", SecretRef{}
+	if err := d.Validate(); err == nil {
+		t.Fatal("accepted an admin listener with no authentication configured")
+	}
+	t.Setenv(AdminPasswordEnv, "demo")
+	if err := d.Validate(); err != nil {
+		t.Fatalf("environment-only login: %v", err)
+	}
+	if d.Admin.LocalUsername() != "admin" {
+		t.Fatalf("unexpected fallback username %q", d.Admin.LocalUsername())
+	}
+}
+
 func TestInitialCatalogs(t *testing.T) {
 	initial, err := (Deployment{}).ReadInitial()
 	if err != nil {

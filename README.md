@@ -23,11 +23,13 @@ Use arm64 on 64-bit Raspberry Pi OS and ARMv7 on 32-bit Raspberry Pi OS. Run `sc
 
 Copy the two example JSON files and the bundled `lists/` directory into a private deployment directory. Relative paths resolve from the deployment file. Set `node`, choose `dns.listen` and `dns.allow`, and replace the example upstream address and TLS verification name in the desired configuration. The loopback settings are suitable for a first smoke test. Add the actual LAN bindings and IPv4/IPv6 client CIDRs for LAN service.
 
-Run the password command separately. Enter the same password at both prompts. Confirm that the command created `operator.hash` before starting Marco.
+The sample administrator username is `admin`. Set `MARCO_ADMIN_PASSWORD` in Marco’s environment to sign in with that password. Set `MARCO_ADMIN_USERNAME` to choose a different username.
+
+For a password hash file, run the password command separately. Enter the same password at both prompts and confirm that the command created `admin.hash` before starting Marco.
 
 ```sh
 umask 077
-marco password --out operator.hash
+marco password --out admin.hash
 ```
 
 Create a temporary HTTPS certificate for the local smoke test. Trust it in your browser to test the console. Use a certificate valid for your configured admin host in deployment.
