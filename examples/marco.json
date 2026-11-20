@@ -13,6 +13,6 @@
     "certFile": "admin-cert.pem",
     "keyFile": "admin-key.pem",
     "username": "admin",
-    "passwordHash": {"file": "admin.hash"}
+    "password": {"env": "MARCO_ADMIN_PASSWORD"}
   }
 }

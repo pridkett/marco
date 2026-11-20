@@ -40,25 +40,7 @@ func TestAdminEnvironmentCredentials(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	login := httptest.NewRecorder()
-	csrf, err := manager.LoginToken(login, httptest.NewRequest(http.MethodGet, settings.PublicURL+"/login", nil))
-	if err != nil {
-		t.Fatal(err)
-	}
-	post := httptest.NewRequest(http.MethodPost, settings.PublicURL+"/login", nil)
-	for _, cookie := range login.Result().Cookies() {
-		post.AddCookie(cookie)
-	}
-	signedIn := httptest.NewRecorder()
-	if err := manager.LoginLocal(signedIn, post, "env-admin", "demo", csrf); err != nil {
-		t.Fatal(err)
-	}
-	request := httptest.NewRequest(http.MethodGet, settings.PublicURL, nil)
-	for _, cookie := range signedIn.Result().Cookies() {
-		if cookie.MaxAge > 0 {
-			request.AddCookie(cookie)
-		}
-	}
+	request := localSessionRequest(t, manager, settings.PublicURL, "env-admin", "demo")
 	if err := db.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -82,6 +64,69 @@ func TestAdminEnvironmentCredentials(t *testing.T) {
 	if _, valid := manager.Session(request); valid {
 		t.Fatal("session survived a password change")
 	}
+}
+
+func TestAdminProvisionedPasswordRepresentations(t *testing.T) {
+	db, err := store.Open(t.Context(), t.TempDir(), config.Defaults())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	hash, err := auth.HashPassword([]byte("demo"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	settings := config.AdminSettings{PublicURL: "https://marco.test"}
+	t.Setenv(config.AdminUsernameEnv, "")
+	t.Setenv(config.AdminPasswordEnv, hash)
+	manager, err := openAuth(t.Context(), db, settings)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if request := localSessionRequest(t, manager, settings.PublicURL, "admin", "demo"); request.Header.Get("Cookie") == "" {
+		t.Fatal("hash-backed login produced no session cookie")
+	}
+
+	t.Setenv(config.AdminPasswordEnv, "")
+	settings.Password = config.SecretRef{Env: "MARCO_TEST_PASSWORD"}
+	for _, value := range []string{"demo", hash} {
+		t.Setenv(settings.Password.Env, value)
+		manager, err := openAuth(t.Context(), db, settings)
+		if err != nil {
+			t.Fatal(err)
+		}
+		localSessionRequest(t, manager, settings.PublicURL, "admin", "demo")
+	}
+
+	t.Setenv(settings.Password.Env, "$argon2id$invalid")
+	if manager, err := openAuth(t.Context(), db, settings); manager != nil || err == nil {
+		t.Fatal("malformed Argon2id string was used as a literal password")
+	}
+}
+
+func localSessionRequest(t *testing.T, manager *auth.Manager, origin, username, password string) *http.Request {
+	t.Helper()
+	login := httptest.NewRecorder()
+	csrf, err := manager.LoginToken(login, httptest.NewRequest(http.MethodGet, origin+"/login", nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	post := httptest.NewRequest(http.MethodPost, origin+"/login", nil)
+	for _, cookie := range login.Result().Cookies() {
+		post.AddCookie(cookie)
+	}
+	signedIn := httptest.NewRecorder()
+	if err := manager.LoginLocal(signedIn, post, username, password, csrf); err != nil {
+		t.Fatal(err)
+	}
+	request := httptest.NewRequest(http.MethodGet, origin, nil)
+	for _, cookie := range signedIn.Result().Cookies() {
+		if cookie.MaxAge > 0 {
+			request.AddCookie(cookie)
+		}
+	}
+	return request
 }
 
 func TestUniFiLocalAccountPasswordFromEnvironment(t *testing.T) {

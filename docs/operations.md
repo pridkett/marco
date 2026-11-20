@@ -4,7 +4,9 @@
 
 Use a direct HTTPS bind with `admin.certFile` and `admin.keyFile`, or bind the backend to loopback and set `admin.trustedProxies` to the reverse proxy's exact source CIDRs. Set `X-Forwarded-Host` and `X-Forwarded-Proto` at the trusted proxy and overwrite incoming values. Set `X-Real-IP` to the transport peer for per-client sign-in rate limiting. The public URL must match the browser origin. The DNS CIDR ACL is independent of admin access.
 
-The local username defaults to `admin` when a password is configured. `MARCO_ADMIN_USERNAME` overrides `admin.username`. A non-empty `MARCO_ADMIN_PASSWORD` takes precedence over `admin.passwordHash`. Marco hashes the environment password in memory at startup. Supply the variable through the process environment or your service manager’s secret configuration. Restart Marco to pick up credential changes.
+The local username defaults to `admin` when a password is configured. `MARCO_ADMIN_USERNAME` overrides `admin.username`. A non-empty `MARCO_ADMIN_PASSWORD` takes precedence over the credential reference in `marco.json`. It accepts a literal password or the Argon2id hash printed by `marco password`. Marco hashes literal passwords in memory at startup. Supply the variable through the process environment or your service manager’s secret configuration. Restart Marco to pick up credential changes.
+
+The sample uses `"password": {"env": "MARCO_ADMIN_PASSWORD"}`. Use `admin.password` to reference a different environment variable or mounted file containing either representation. Use `admin.passwordHash` for a reference that accepts only a generated hash.
 
 To add PocketID or another OIDC provider, configure `admin.issuer`, `admin.clientID`, `admin.clientSecret`, and `admin.adminGroup`. Register the callback URI formed by appending `/auth/callback` to the public URL. Use the provider's group claim for authorization. Leave the local password account configured for recovery during provider outages. A secret reference takes either `{"env":"ENV_NAME"}` or `{"file":"/run/secrets/name"}`. Restart the instance after rotating a hash with `marco password --out admin.hash`.
 

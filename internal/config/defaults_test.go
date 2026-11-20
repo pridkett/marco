@@ -17,7 +17,10 @@ func TestLocalAdminDefaultsAndEnvironment(t *testing.T) {
 	if d.Admin.LocalUsername() != "admin" {
 		t.Fatalf("unexpected sample username %q", d.Admin.LocalUsername())
 	}
-	d.Admin.Username, d.Admin.PasswordHash = "", SecretRef{}
+	if d.Admin.Password.Env != AdminPasswordEnv {
+		t.Fatalf("unexpected sample credential source: %+v", d.Admin.Password)
+	}
+	d.Admin.Username, d.Admin.Password, d.Admin.PasswordHash = "", SecretRef{}, SecretRef{}
 	if err := d.Validate(); err == nil {
 		t.Fatal("accepted an admin listener with no authentication configured")
 	}

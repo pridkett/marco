@@ -98,6 +98,7 @@ type AdminSettings struct {
 	CertFile       string         `json:"certFile"`
 	KeyFile        string         `json:"keyFile"`
 	Username       string         `json:"username"`
+	Password       SecretRef      `json:"password"`
 	PasswordHash   SecretRef      `json:"passwordHash"`
 	Issuer         string         `json:"issuer"`
 	ClientID       string         `json:"clientID"`
@@ -185,7 +186,7 @@ func ReadDeployment(file string) (Deployment, error) {
 	if err != nil {
 		return d, err
 	}
-	for _, name := range []*string{&d.DataDir, &d.Initial, &d.ListDir, &d.Admin.KeyFile, &d.Admin.CertFile, &d.Admin.PasswordHash.File,
+	for _, name := range []*string{&d.DataDir, &d.Initial, &d.ListDir, &d.Admin.KeyFile, &d.Admin.CertFile, &d.Admin.Password.File, &d.Admin.PasswordHash.File,
 		&d.ServiceCatalogPath, &d.Admin.ClientSecret.File, &d.UniFi.CAFile, &d.UniFi.Password.File, &d.UniFi.APIKey.File, &d.Upstream.CAFile, &d.History.AnonymizationKey.File} {
 		if *name != "" && !filepath.IsAbs(*name) {
 			*name = filepath.Join(base, *name)
@@ -294,9 +295,12 @@ func (d Deployment) Validate() error {
 		if err := validatePrefixes("admin.trustedProxies", d.Admin.TrustedProxies); err != nil {
 			return err
 		}
-		localPassword := d.Admin.PasswordHash.Set() || os.Getenv(AdminPasswordEnv) != ""
+		if d.Admin.Password.Set() && d.Admin.PasswordHash.Set() {
+			return errors.New("choose either admin.password or admin.passwordHash")
+		}
+		localPassword := d.Admin.Password.Set() || d.Admin.PasswordHash.Set() || os.Getenv(AdminPasswordEnv) != ""
 		if d.Admin.Username != "" && !localPassword {
-			return errors.New("local admin requires a password hash reference or " + AdminPasswordEnv)
+			return errors.New("local admin requires a password reference or " + AdminPasswordEnv)
 		}
 		if d.Admin.Issuer == "" {
 			if d.Admin.ClientID != "" || d.Admin.ClientSecret.Set() || d.Admin.AdminGroup != "" {
@@ -324,7 +328,7 @@ func (d Deployment) Validate() error {
 	if d.History.Enabled && d.History.Anonymize && !d.History.AnonymizationKey.Set() {
 		return errors.New("anonymized history requires an anonymization key reference")
 	}
-	for _, ref := range []SecretRef{d.Admin.PasswordHash, d.Admin.ClientSecret, d.UniFi.APIKey, d.UniFi.Password, d.History.AnonymizationKey} {
+	for _, ref := range []SecretRef{d.Admin.Password, d.Admin.PasswordHash, d.Admin.ClientSecret, d.UniFi.APIKey, d.UniFi.Password, d.History.AnonymizationKey} {
 		if ref.Env != "" && ref.File != "" {
 			return errors.New("secret reference has both env and file")
 		}

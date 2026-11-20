@@ -38,9 +38,19 @@ func HashPassword(password []byte) (string, error) {
 	return encodePassword(password, salt), nil
 }
 
-// HashEnvironmentPassword uses an instance-specific salt so local sessions
-// remain valid across restarts with the same credentials.
-func HashEnvironmentPassword(ctx context.Context, store Store, password []byte) (string, error) {
+// ProvisionedPasswordHash accepts a Marco-generated hash or hashes a literal
+// password with an instance-specific salt to retain sessions across restarts.
+func ProvisionedPasswordHash(ctx context.Context, store Store, value string) (string, error) {
+	if strings.HasPrefix(value, "$argon2id$") {
+		_, digest, err := parsePassword(value)
+		clear(digest)
+		if err != nil {
+			return "", err
+		}
+		return strings.TrimSpace(value), nil
+	}
+	password := []byte(value)
+	defer clear(password)
 	if err := validatePassword(password); err != nil {
 		return "", err
 	}

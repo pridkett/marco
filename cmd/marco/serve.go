@@ -232,15 +232,22 @@ func newUniFi(s config.UniFiSettings, update contract.Update) (*inventory.Worker
 	return inventory.NewWorker(source, update, time.Duration(s.Interval)), nil
 }
 
-func openAuth(ctx context.Context, db *store.Store, s config.AdminSettings) (*auth.Manager, error) {
-	var hash string
-	var localErr error
-	if password := []byte(os.Getenv(config.AdminPasswordEnv)); len(password) > 0 {
-		hash, localErr = auth.HashEnvironmentPassword(ctx, db, password)
-		clear(password)
-	} else {
-		hash, localErr = s.PasswordHash.Resolve("local admin password hash")
+func localPasswordHash(ctx context.Context, db *store.Store, s config.AdminSettings) (string, error) {
+	if value := os.Getenv(config.AdminPasswordEnv); value != "" {
+		return auth.ProvisionedPasswordHash(ctx, db, value)
 	}
+	if s.Password.Set() {
+		value, err := s.Password.Resolve("local admin password")
+		if err != nil {
+			return "", err
+		}
+		return auth.ProvisionedPasswordHash(ctx, db, value)
+	}
+	return s.PasswordHash.Resolve("local admin password hash")
+}
+
+func openAuth(ctx context.Context, db *store.Store, s config.AdminSettings) (*auth.Manager, error) {
+	hash, localErr := localPasswordHash(ctx, db, s)
 	secret, oidcErr := s.ClientSecret.Resolve("OIDC client secret")
 	settings := auth.Settings{PublicURL: s.PublicURL, TrustedProxies: s.TrustedProxies, SessionTTL: time.Duration(s.SessionTTL)}
 	if localErr == nil && hash != "" {
