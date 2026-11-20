@@ -66,8 +66,9 @@ type Manager struct {
 }
 
 type Session struct {
-	Account string
-	CSRF    string
+	Account     string
+	DisplayName string
+	CSRF        string
 }
 
 func New(ctx context.Context, store Store, cfg Settings) (*Manager, error) {
@@ -111,7 +112,7 @@ func New(ctx context.Context, store Store, cfg Settings) (*Manager, error) {
 		_, err := tx.ExecContext(ctx, `
 			CREATE TABLE IF NOT EXISTS admin_sessions (
 				token TEXT PRIMARY KEY, account TEXT NOT NULL, csrf TEXT NOT NULL,
-				scope TEXT NOT NULL, expires INTEGER NOT NULL
+				scope TEXT NOT NULL, expires INTEGER NOT NULL, email TEXT NOT NULL DEFAULT ''
 			);
 			CREATE INDEX IF NOT EXISTS admin_sessions_expiry ON admin_sessions(expires);
 			CREATE TABLE IF NOT EXISTS admin_oidc_attempts (
@@ -124,6 +125,16 @@ func New(ctx context.Context, store Store, cfg Settings) (*Manager, error) {
 				result TEXT NOT NULL, revision INTEGER NOT NULL
 			);
 		`)
+		if err != nil {
+			return err
+		}
+		var hasEmail bool
+		if err := tx.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM pragma_table_info('admin_sessions') WHERE name = 'email')`).Scan(&hasEmail); err != nil {
+			return err
+		}
+		if !hasEmail {
+			_, err = tx.ExecContext(ctx, `ALTER TABLE admin_sessions ADD COLUMN email TEXT NOT NULL DEFAULT ''`)
+		}
 		return err
 	})
 	if err != nil {
@@ -241,11 +252,22 @@ func (m *Manager) Session(r *http.Request) (Session, bool) {
 		return Session{}, false
 	}
 	var session Session
-	var scope string
+	var scope, email string
 	err := m.store.DB().QueryRowContext(r.Context(), `
-		SELECT account, csrf, scope FROM admin_sessions WHERE token = ? AND expires > ?
-	`, digest(token), time.Now().Unix()).Scan(&session.Account, &session.CSRF, &scope)
-	return session, err == nil && scope != "" && (scope == m.localScope || scope == m.oidcScope)
+		SELECT account, csrf, scope, email FROM admin_sessions WHERE token = ? AND expires > ?
+	`, digest(token), time.Now().Unix()).Scan(&session.Account, &session.CSRF, &scope, &email)
+	if err != nil || scope == "" || (scope != m.localScope && scope != m.oidcScope) {
+		return Session{}, false
+	}
+	switch {
+	case scope == m.localScope:
+		session.DisplayName = session.Account
+	case email != "":
+		session.DisplayName = email
+	default:
+		session.DisplayName = "OIDC administrator"
+	}
+	return session, true
 }
 
 func (m *Manager) LoginLocal(w http.ResponseWriter, r *http.Request, username, password, csrf string) error {
@@ -272,10 +294,10 @@ func (m *Manager) LoginLocal(w http.ResponseWriter, r *http.Request, username, p
 	if sameUser&matchPassword(passwordBytes, m.salt, m.password) != 1 {
 		return ErrCredentials
 	}
-	return m.startSession(w, r, "local:"+m.cfg.Username, m.localScope)
+	return m.startSession(w, r, "local:"+m.cfg.Username, m.localScope, "")
 }
 
-func (m *Manager) startSession(w http.ResponseWriter, r *http.Request, account, scope string) error {
+func (m *Manager) startSession(w http.ResponseWriter, r *http.Request, account, scope, email string) error {
 	token, err := randomToken()
 	if err != nil {
 		return err
@@ -291,8 +313,8 @@ func (m *Manager) startSession(w http.ResponseWriter, r *http.Request, account, 
 		if _, err := tx.ExecContext(ctx, "DELETE FROM admin_sessions WHERE expires <= ? OR token = ?", now.Unix(), oldToken); err != nil {
 			return err
 		}
-		_, err := tx.ExecContext(ctx, "INSERT INTO admin_sessions(token, account, csrf, scope, expires) VALUES (?, ?, ?, ?, ?)",
-			digest(token), account, csrf, scope, now.Add(m.cfg.SessionTTL).Unix())
+		_, err := tx.ExecContext(ctx, `INSERT INTO admin_sessions(token, account, csrf, scope, expires, email) VALUES (?, ?, ?, ?, ?, ?)`,
+			digest(token), account, csrf, scope, now.Add(m.cfg.SessionTTL).Unix(), email)
 		return err
 	})
 	if err != nil {
