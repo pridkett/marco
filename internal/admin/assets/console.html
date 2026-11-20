@@ -352,10 +352,27 @@
     <button type="submit" class="button">Filter queries</button>
   </form>
   <p class="mobile-table-note muted" id="history-scroll-help">Scroll the table to see more columns.</p>
-  <div class="panel table-box" role="region" aria-label="Query history" aria-describedby="history-scroll-help" tabindex="0">
+  <div class="panel table-box" role="region" aria-label="Query Log" aria-describedby="history-scroll-help" tabindex="0">
     <table class="history-table">
       <thead><tr><th scope="col">Time (UTC)</th><th scope="col">Node</th><th scope="col">Client</th><th scope="col">Question</th><th scope="col">Type</th><th scope="col">Outcome</th><th scope="col">Rule</th><th scope="col">Cache</th><th scope="col">Latency</th></tr></thead>
-      <tbody>{{range .History.Entries}}<tr><td class="time">{{when .Time}}</td><td>{{label .Node}}</td><td>{{label .Client}}</td><th scope="row">{{label .Name}}</th><td>{{.TypeLabel}}</td><td>{{.RCodeLabel}} · {{.Origin}}<span class="secondary">{{.Reason}}</span></td><td>{{label .Rule}}</td><td>{{label .Cache}}</td><td>{{.Latency}}</td></tr>
+      <tbody>{{range .History.Entries}}
+        <tr>
+          <td class="time">{{when .Time}}</td>
+          <td>{{label .Node}}</td>
+          <td>{{label .Client}}</td>
+          <th scope="row">{{label .Name}}</th>
+          <td>{{.TypeLabel}}</td>
+          <td>
+            <div class="query-outcome">
+              {{with queryBadge .}}<span class="query-badge {{.Kind}}">{{.Label}}</span>{{end}}
+              <span class="muted">{{.RCodeLabel}}</span>
+            </div>
+            {{with .Reason}}<span class="secondary">{{.}}</span>{{end}}
+          </td>
+          <td>{{label .Rule}}</td>
+          <td>{{label .Cache}}</td>
+          <td>{{.Latency}}</td>
+        </tr>
         {{else}}<tr><td colspan="9" class="empty">No queries match these filters.</td></tr>{{end}}</tbody>
     </table>
   </div>

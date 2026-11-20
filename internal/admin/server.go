@@ -44,6 +44,7 @@ var views = template.Must(template.New("").Funcs(template.FuncMap{
 	"when":       dateTime,
 	"age":        age,
 	"pretty":     pretty,
+	"queryBadge": queryBadge,
 	"label": func(value any) string {
 		s := fmt.Sprint(value)
 		if s == "" {
@@ -79,7 +80,7 @@ type server struct {
 
 var navigation = []navItem{
 	{"Overview", "/"}, {"Devices", "/devices"}, {"Local DNS", "/local-dns"},
-	{"Policies", "/policies"}, {"Services", "/services"}, {"Blocklists", "/blocklists"}, {"Query log", "/query-log"},
+	{"Policies", "/policies"}, {"Services", "/services"}, {"Blocklists", "/blocklists"}, {"Query Log", "/query-log"},
 	{"Settings", "/settings"},
 }
 

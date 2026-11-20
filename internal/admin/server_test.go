@@ -252,7 +252,7 @@ func TestRoutesReadyAuthAndRenderedViews(t *testing.T) {
 		{"/local-dns", []string{"console.home.arpa.", "Unresolved", "Private", "test-collision"}},
 		{"/policies", []string{"Client groups", "Test a DNS decision", "local-only"}},
 		{"/blocklists", []string{"fixture-digest", "Waiting for valid list", "Refresh fixture", "/blocklists/test"}},
-		{"/query-log?question=BLOCKED&outcome=NXDOMAIN", []string{"blocked.test.", "subscription-block", "fixture", "192.0.2.2"}},
+		{"/query-log?question=BLOCKED&outcome=NXDOMAIN", []string{"<h1>Query Log</h1>", "blocked.test.", `class="query-badge blocked">Blocked`, "NXDOMAIN", "subscription-block", "fixture", "192.0.2.2"}},
 		{"/settings", []string{"Test encrypted endpoints", "Import and export", "Instance status"}},
 	}
 	for _, tc := range cases {
@@ -270,6 +270,32 @@ func TestRoutesReadyAuthAndRenderedViews(t *testing.T) {
 	checkContent(t, probe, "test-rule", "REFUSED", "confirmed")
 	testUpstream := request(f.handler, "POST", "/settings/test-upstream", url.Values{"csrf": {f.csrf}, "pool": {"primary"}}, f.cookie)
 	checkContent(t, testUpstream, "Upstream test completed", "reachable")
+}
+
+func TestQueryBadge(t *testing.T) {
+	cases := []struct {
+		origin, cache string
+		code          int
+		want          string
+	}{
+		{"local", "", dns.RcodeSuccess, "local"},
+		{"local", "", dns.RcodeNameError, "local"},
+		{"cache", "hit", dns.RcodeSuccess, "cache"},
+		{"cache", "hit", dns.RcodeNameError, "cache"},
+		{"upstream", "miss", dns.RcodeSuccess, "upstream"},
+		{"upstream", "miss", dns.RcodeNameError, "upstream"},
+		{"policy", "hit", dns.RcodeNameError, "blocked"},
+		{"policy", "", dns.RcodeRefused, "blocked"},
+		{"upstream", "miss", dns.RcodeServerFailure, "error"},
+		{"cache", "hit", dns.RcodeServerFailure, "error"},
+		{"server", "", dns.RcodeFormatError, "error"},
+	}
+	for _, tc := range cases {
+		entry := querylog.Entry{Origin: tc.origin, RCode: tc.code, Cache: tc.cache}
+		if got := queryBadge(entry).Kind; got != tc.want {
+			t.Errorf("%s %s (cache %q): got %q, want %q", tc.origin, entry.RCodeLabel(), tc.cache, got, tc.want)
+		}
+	}
 }
 
 func TestConsoleStylesheetVersion(t *testing.T) {

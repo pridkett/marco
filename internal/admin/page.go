@@ -352,6 +352,29 @@ func (s *server) aliasStatus(records []config.Record) map[string]string {
 	return status
 }
 
+type outcomeBadge struct {
+	Kind, Label string
+}
+
+func queryBadge(entry querylog.Entry) outcomeBadge {
+	if entry.Origin == "policy" {
+		return outcomeBadge{"blocked", "Blocked"}
+	}
+	if entry.RCode != dns.RcodeSuccess && entry.RCode != dns.RcodeNameError {
+		return outcomeBadge{"error", "Error"}
+	}
+	switch entry.Origin {
+	case "local":
+		return outcomeBadge{"local", "Local DNS"}
+	case "cache":
+		return outcomeBadge{"cache", "Cache hit"}
+	case "upstream":
+		return outcomeBadge{"upstream", "Upstream"}
+	default:
+		return outcomeBadge{"other", "Other"}
+	}
+}
+
 func (p *page) queryHistory(r *http.Request, l *querylog.Log) {
 	if l == nil || !p.Stats.Enabled {
 		return
