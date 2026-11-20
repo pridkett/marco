@@ -54,3 +54,8 @@ sessions and deployment credentials. The same format works in the import
 editor and CLI. Device and policy editors distinguish omitted selection fields
 from empty arrays. Omission inherits the selection and an empty array clears
 it for that scope.
+
+Use the Device group picker to assign or clear a group. The console provides
+revision-checked forms at `POST /policies/defaults` and
+`POST /blocklists/defaults` for adding the starter groups and subscriptions
+to an existing instance. Existing policies and list selections retain their settings.
