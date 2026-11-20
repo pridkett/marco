@@ -8,7 +8,21 @@ The local username defaults to `admin` when a password is configured. `MARCO_ADM
 
 The sample uses `"password": {"env": "MARCO_ADMIN_PASSWORD"}`. Use `admin.password` to reference a different environment variable or mounted file containing either representation. Use `admin.passwordHash` for a reference that accepts only a generated hash.
 
-To add PocketID or another OIDC provider, configure `admin.issuer`, `admin.clientID`, `admin.clientSecret`, and `admin.adminGroup`. Register the callback URI formed by appending `/auth/callback` to the public URL. Use the provider's group claim for authorization. Leave the local password account configured for recovery during provider outages. A secret reference takes either `{"env":"ENV_NAME"}` or `{"file":"/run/secrets/name"}`. Restart the instance after rotating a hash with `marco password --out admin.hash`.
+### OIDC sign-in
+
+Create a confidential client at your identity provider. Register the callback URI by appending `/auth/callback` to Marco’s public URL, for example `https://marco.wagstrom.net/auth/callback`. Merge these fields into the `admin` object in `marco.json` and set `MARCO_OIDC_CLIENT_SECRET` in the service environment. Use the provider’s HTTPS issuer URL and the client ID it assigned to Marco. [Pocket ID client setup](https://pocket-id.org/docs/setup/connect-an-app)
+
+```json
+{
+  "issuer": "https://id.wagstrom.net",
+  "clientID": "your-client-id",
+  "clientSecret": {"env": "MARCO_OIDC_CLIENT_SECRET"}
+}
+```
+
+Marco grants the same console access as the local administrator when the signed ID token’s `groups` array contains `admin`. Group names are case-sensitive. Set `admin.adminGroup` to use a different group. With Pocket ID, use the group's name included in the ID token. [Pocket ID scopes and claims](https://pocket-id.org/docs/guides/scopes-and-claims)
+
+You can keep the local password account for recovery during provider outages. For OIDC-only sign-in, remove the local password reference and leave `MARCO_ADMIN_PASSWORD` unset. The client secret reference also accepts a mounted file such as `{"file":"/run/secrets/marco-oidc"}`.
 
 ### Wildcard HTTPS certificate
 

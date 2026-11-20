@@ -227,22 +227,25 @@ func TestOIDCPKCEStateNonceAndGroup(t *testing.T) {
 	}))
 	defer idp.Close()
 	issuer = idp.URL
-	m := openManager(t, Settings{PublicURL: "https://marco.test", Issuer: issuer, ClientID: "marco",
-		ClientSecret: "fake-test-client-secret", AdminGroup: "marco-admins"})
-	m.oidcClient = idp.Client()
-
 	cases := []struct {
 		name, claim string
 		value       any
 		allowed     bool
+		adminGroup  string
 	}{
-		{name: "wrong group", claim: "groups", value: []string{"no-access"}},
+		{name: "wrong group", claim: "groups", value: []string{"Admin"}},
+		{name: "missing group", claim: "groups"},
 		{name: "wrong audience", claim: "aud", value: "another-client"},
 		{name: "wrong nonce", claim: "nonce", value: "another-login"},
-		{name: "authorized", allowed: true},
+		{name: "default admin group", allowed: true},
+		{name: "overridden admin group", claim: "groups", value: []string{"marco-admins"}, allowed: true, adminGroup: "marco-admins"},
+		{name: "override excludes default group", adminGroup: "marco-admins"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			m := openManager(t, Settings{PublicURL: "https://marco.test", Issuer: issuer, ClientID: "marco",
+				ClientSecret: "fake-test-client-secret", AdminGroup: tc.adminGroup})
+			m.oidcClient = idp.Client()
 			csrf, login := freshLogin(t, m)
 			location, err := m.StartOIDC(browserRequest(http.MethodPost, "/login", login), csrf)
 			if err != nil {
@@ -254,13 +257,18 @@ func TestOIDCPKCEStateNonceAndGroup(t *testing.T) {
 			}
 			params := authorization.Query()
 			if authorization.Path != "/authorize" || params.Get("code_challenge_method") != "S256" ||
-				params.Get("response_type") != "code" || params.Get("state") == "" || params.Get("nonce") == "" {
+				params.Get("response_type") != "code" || params.Get("state") == "" || params.Get("nonce") == "" ||
+				params.Get("scope") != "openid groups" {
 				t.Fatal("authorization request missing protocol fields")
 			}
 			claims := map[string]any{"iss": issuer, "sub": "admin-1", "aud": "marco", "exp": time.Now().Add(time.Hour).Unix(),
-				"iat": time.Now().Unix(), "nonce": params.Get("nonce"), "groups": []string{"marco-admins"}}
+				"iat": time.Now().Unix(), "nonce": params.Get("nonce"), "groups": []string{"users", "admin"}}
 			if tc.claim != "" {
-				claims[tc.claim] = tc.value
+				if tc.value == nil {
+					delete(claims, tc.claim)
+				} else {
+					claims[tc.claim] = tc.value
+				}
 			}
 			exchanges <- exchange{challenge: params.Get("code_challenge"), claims: claims}
 			path := CallbackPath + "?code=test-code&state=" + url.QueryEscape(params.Get("state"))

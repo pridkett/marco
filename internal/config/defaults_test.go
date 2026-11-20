@@ -33,6 +33,21 @@ func TestLocalAdminDefaultsAndEnvironment(t *testing.T) {
 	}
 }
 
+func TestOIDCOnlyDeployment(t *testing.T) {
+	t.Setenv(AdminPasswordEnv, "")
+	d, err := ReadDeployment("../../examples/marco.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	d.Admin.Password = SecretRef{}
+	d.Admin.Issuer = "https://issuer.test"
+	d.Admin.ClientID = "marco"
+	d.Admin.ClientSecret = SecretRef{Env: "MARCO_OIDC_CLIENT_SECRET"}
+	if err := d.Validate(); err != nil {
+		t.Fatalf("OIDC-only deployment with default group: %v", err)
+	}
+}
+
 func TestInitialCatalogs(t *testing.T) {
 	initial, err := (Deployment{}).ReadInitial()
 	if err != nil {

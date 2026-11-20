@@ -79,6 +79,9 @@ func New(ctx context.Context, store Store, cfg Settings) (*Manager, error) {
 	if cfg.SessionTTL <= 0 {
 		cfg.SessionTTL = 12 * time.Hour
 	}
+	if cfg.Issuer != "" && cfg.AdminGroup == "" {
+		cfg.AdminGroup = "admin"
+	}
 	for _, p := range cfg.TrustedProxies {
 		if !p.IsValid() {
 			return nil, errors.New("invalid admin trusted proxy prefix")
@@ -96,8 +99,8 @@ func New(ctx context.Context, store Store, cfg Settings) (*Manager, error) {
 		m.localScope = digest(m.cfg.Username + "\x00" + strings.TrimSpace(m.cfg.PasswordHash))
 	}
 	if cfg.Issuer != "" || cfg.ClientID != "" || cfg.ClientSecret != "" || cfg.AdminGroup != "" {
-		if issuer, err := parseHTTPS(cfg.Issuer); err != nil || issuer.RawQuery != "" || cfg.ClientID == "" || cfg.AdminGroup == "" {
-			return nil, errors.New("OIDC requires an HTTPS issuer, client ID and admin group")
+		if issuer, err := parseHTTPS(cfg.Issuer); err != nil || issuer.RawQuery != "" || cfg.ClientID == "" {
+			return nil, errors.New("OIDC requires an HTTPS issuer and client ID")
 		}
 		m.oidcScope = digest(cfg.Issuer + "\x00" + cfg.ClientID + "\x00" + cfg.AdminGroup)
 	}

@@ -299,15 +299,15 @@ func (d Deployment) Validate() error {
 			return errors.New("choose either admin.password or admin.passwordHash")
 		}
 		localPassword := d.Admin.Password.Set() || d.Admin.PasswordHash.Set() || os.Getenv(AdminPasswordEnv) != ""
-		if d.Admin.Username != "" && !localPassword {
+		if d.Admin.Issuer == "" && d.Admin.Username != "" && !localPassword {
 			return errors.New("local admin requires a password reference or " + AdminPasswordEnv)
 		}
 		if d.Admin.Issuer == "" {
 			if d.Admin.ClientID != "" || d.Admin.ClientSecret.Set() || d.Admin.AdminGroup != "" {
 				return errors.New("OIDC settings require an issuer")
 			}
-		} else if d.Admin.AdminGroup == "" || d.Admin.ClientID == "" || !d.Admin.ClientSecret.Set() {
-			return errors.New("OIDC requires client ID, client secret reference and admin group")
+		} else if d.Admin.ClientID == "" || !d.Admin.ClientSecret.Set() {
+			return errors.New("OIDC requires a client ID and client secret reference")
 		}
 		if !localPassword && d.Admin.Issuer == "" {
 			return errors.New("configure a local account or an OIDC provider to enable admin")

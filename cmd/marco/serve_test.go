@@ -157,8 +157,11 @@ func TestAdminTLSWithWildcardCertificate(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer db.Close()
-	authManager, err := auth.New(ctx, db, auth.Settings{PublicURL: settings.PublicURL,
-		Issuer: "https://oidc.test", ClientID: "fixture", AdminGroup: "admin"})
+	t.Setenv(config.AdminPasswordEnv, "")
+	t.Setenv("MARCO_OIDC_CLIENT_SECRET", "test-client-secret")
+	settings.Issuer, settings.ClientID = "https://oidc.test", "fixture"
+	settings.ClientSecret = config.SecretRef{Env: "MARCO_OIDC_CLIENT_SECRET"}
+	authManager, err := openAuth(ctx, db, settings)
 	if err != nil {
 		t.Fatal(err)
 	}
