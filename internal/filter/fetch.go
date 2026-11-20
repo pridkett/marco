@@ -46,6 +46,9 @@ func NewFetcher(directory string) *Fetcher {
 }
 
 func ValidateSource(s config.Subscription) error {
+	if s.Format != "" && s.Format != config.AdGuardFormat {
+		return fmt.Errorf("unknown subscription format %q", s.Format)
+	}
 	if (s.URL == "") == (s.File == "") {
 		return fmt.Errorf("specify exactly one HTTPS URL or local file")
 	}

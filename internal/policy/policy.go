@@ -36,11 +36,10 @@ type binding struct {
 }
 
 type feed struct {
-	digest     string
-	allowlist  bool
-	allowEmpty bool
-	count      int
-	index      filter.Index
+	digest string
+	source config.Subscription
+	count  int
+	index  *filter.SubscriptionIndex
 }
 
 type Engine struct {
@@ -154,15 +153,14 @@ func Compile(state *config.State, previous *Engine) (*Engine, error) {
 		if previous != nil {
 			old = previous.feeds[name]
 		}
-		if old.digest != artifact.Digest || old.allowlist != artifact.Source.Allowlist ||
-			old.allowEmpty != artifact.Source.AllowEmpty || old.index == nil {
-			index, count, err := filter.Parse(artifact.Body, artifact.Source.Allowlist, artifact.Source.AllowEmpty)
+		if old.digest != artifact.Digest || old.source != artifact.Source || old.index == nil {
+			index, count, err := filter.Parse(artifact.Body, artifact.Source)
 			if err != nil {
 				return nil, fmt.Errorf("subscription %q: %w", name, err)
 			}
-			old = feed{artifact.Digest, artifact.Source.Allowlist, artifact.Source.AllowEmpty, count, index}
+			old = feed{artifact.Digest, artifact.Source, count, index}
 		}
-		indexRules += len(old.index)
+		indexRules += old.index.Len()
 		if indexRules > filter.MaxIndexRules {
 			return nil, fmt.Errorf("subscription indexes exceed the total budget of %d domains", filter.MaxIndexRules)
 		}

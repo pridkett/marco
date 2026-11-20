@@ -82,7 +82,11 @@ type Service struct {
 	Domains []Rule `json:"domains"`
 }
 
+const AdGuardFormat = "adguard"
+
 type Subscription struct {
+	Name       string `json:"name,omitempty"`
+	Format     string `json:"format,omitempty"`
 	URL        string `json:"url,omitempty"`
 	File       string `json:"file,omitempty"`
 	Enabled    bool   `json:"enabled"`

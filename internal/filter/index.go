@@ -29,11 +29,12 @@ const (
 type Index map[string]Bits
 
 type Match struct {
-	Found bool
-	Allow bool
-	Exact bool
-	Size  int
-	Name  string
+	Found     bool
+	Allow     bool
+	Exact     bool
+	Size      int
+	Name      string
+	Important bool
 }
 
 func (m Match) Wins(against Match, allowTie bool) bool {
@@ -42,6 +43,9 @@ func (m Match) Wins(against Match, allowTie bool) bool {
 	}
 	if !against.Found {
 		return true
+	}
+	if m.Important != against.Important {
+		return m.Important
 	}
 	if m.Exact != against.Exact {
 		return m.Exact
@@ -79,10 +83,10 @@ func (i Index) Match(name string, allowTie bool) Match {
 	for suffix := name; suffix != ""; {
 		bits := i[suffix]
 		if suffix == name && bits&(exactDeny|exactAllow) != 0 {
-			return Match{true, bits&exactAllow != 0 && (allowTie || bits&exactDeny == 0), true, len(suffix), suffix}
+			return Match{Found: true, Allow: bits&exactAllow != 0 && (allowTie || bits&exactDeny == 0), Exact: true, Size: len(suffix), Name: suffix}
 		}
 		if bits&(suffixDeny|suffixAllow) != 0 {
-			return Match{true, bits&suffixAllow != 0 && (allowTie || bits&suffixDeny == 0), false, len(suffix), suffix}
+			return Match{Found: true, Allow: bits&suffixAllow != 0 && (allowTie || bits&suffixDeny == 0), Size: len(suffix), Name: suffix}
 		}
 		_, suffix, _ = strings.Cut(suffix, ".")
 	}
@@ -111,36 +115,61 @@ func ParseRule(line string) (config.Rule, error) {
 	return rule, err
 }
 
-func Parse(body []byte, allowlist, allowEmpty bool) (Index, int, error) {
+// SubscriptionIndex combines the domain index with an optional DNS pattern matcher.
+type SubscriptionIndex struct {
+	domains  Index
+	patterns patternIndex
+}
+
+func (i *SubscriptionIndex) Len() int {
+	return len(i.domains) + i.patterns.count
+}
+
+func (i *SubscriptionIndex) Match(name string, allowTie bool) Match {
+	if i == nil {
+		return Match{}
+	}
+	return i.patterns.match(name, i.domains.Match(name, allowTie), allowTie)
+}
+
+func Parse(body []byte, source config.Subscription) (*SubscriptionIndex, int, error) {
 	if len(body) > MaxBytes {
 		return nil, 0, fmt.Errorf("subscription exceeds %d expanded bytes", MaxBytes)
 	}
-	index := make(Index)
+	index := &SubscriptionIndex{domains: make(Index)}
+	advanced := source.Format == config.AdGuardFormat
+	var disabled map[string]bool
+	if advanced {
+		var err error
+		if disabled, err = disabledPatterns(body); err != nil {
+			return nil, 0, err
+		}
+	}
+
 	scanner := bufio.NewScanner(bytes.NewReader(body))
 	count, lineNo, invalid := 0, 0, 0
 	var problems []string
+	recordProblem := func(problem string) {
+		invalid++
+		if len(problems) < 8 {
+			problems = append(problems, fmt.Sprintf("line %d: %s", lineNo, problem))
+		}
+	}
 	for scanner.Scan() {
 		lineNo++
-		line := strings.TrimSpace(strings.TrimPrefix(scanner.Text(), "\uFEFF"))
-		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, "!") ||
-			strings.EqualFold(line, "[Adblock Plus 2.0]") {
+		raw := subscriptionLine(scanner.Text())
+		if raw == "" {
 			continue
 		}
-		raw, _, _ := strings.Cut(line, " #")
 		fields := strings.Fields(raw)
 		if len(fields) > 1 {
 			if _, err := netip.ParseAddr(fields[0]); err == nil {
 				for _, owner := range fields[1:] {
-					if strings.HasPrefix(owner, "#") {
-						break
-					}
-					if rule, err := ParseRule(owner); err != nil || rule.Suffix || rule.Allow {
-						invalid++
-						if len(problems) < 8 {
-							problems = append(problems, fmt.Sprintf("line %d: invalid hosts owner", lineNo))
-						}
+					rule, err := ParseRule(owner)
+					if err != nil || rule.Suffix || rule.Allow {
+						recordProblem("invalid hosts owner")
 					} else {
-						index.add(rule.Name, false, allowlist)
+						index.domains.add(rule.Name, false, source.Allowlist)
 						count++
 					}
 				}
@@ -150,15 +179,24 @@ func Parse(body []byte, allowlist, allowEmpty bool) (Index, int, error) {
 				continue
 			}
 		}
-		rule, err := ParseRule(strings.TrimSpace(raw))
-		if err != nil {
-			invalid++
-			if len(problems) < 8 {
-				problems = append(problems, fmt.Sprintf("line %d: %s", lineNo, syntaxKind(line)))
+		rule, err := ParseRule(raw)
+		switch {
+		case advanced && disabled[strings.ToLower(raw)]:
+			continue
+		case advanced && strings.HasSuffix(raw, "$badfilter"):
+			// Validated in the first pass.
+			continue
+		case err == nil:
+			index.domains.add(rule.Name, rule.Suffix, rule.Allow || source.Allowlist)
+		case advanced:
+			if problem := index.patterns.add(raw, source.Allowlist); problem != nil {
+				recordProblem(problem.Error())
+				continue
 			}
+		default:
+			recordProblem(syntaxKind(raw))
 			continue
 		}
-		index.add(rule.Name, rule.Suffix, rule.Allow || allowlist)
 		count++
 		if count > MaxRules {
 			return nil, 0, fmt.Errorf("subscription exceeds %d usable rules", MaxRules)
@@ -170,10 +208,20 @@ func Parse(body []byte, allowlist, allowEmpty bool) (Index, int, error) {
 	if invalid != 0 {
 		return nil, 0, fmt.Errorf("%d unsupported subscription lines (%s)", invalid, strings.Join(problems, "; "))
 	}
-	if count == 0 && !allowEmpty {
+	if count == 0 && !source.AllowEmpty {
 		return nil, 0, fmt.Errorf("subscription contains no usable rules")
 	}
 	return index, count, nil
+}
+
+func subscriptionLine(text string) string {
+	line := strings.TrimSpace(strings.TrimPrefix(text, "\uFEFF"))
+	if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, "!") ||
+		strings.EqualFold(line, "[Adblock Plus 2.0]") {
+		return ""
+	}
+	raw, _, _ := strings.Cut(line, " #")
+	return strings.TrimSpace(raw)
 }
 
 func syntaxKind(line string) string {
