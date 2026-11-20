@@ -46,7 +46,7 @@
   <div class="shell masthead-row">
     <a href="/" class="brand" aria-label="Marco overview"><span class="brand-mark" aria-hidden="true">M</span> Marco</a>
     <form action="/logout" method="post" class="account">
-      <span class="account-name" title="{{.Account}}">{{.Account}}</span>
+      <span class="account-name" title="{{.DisplayName}}">{{.DisplayName}}</span>
       <input type="hidden" name="csrf" value="{{.CSRF}}">
       <button type="submit" class="button">Sign out</button>
     </form>

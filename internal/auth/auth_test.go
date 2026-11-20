@@ -118,8 +118,9 @@ func TestLocalRecoveryWithOfflineIssuerAndRotation(t *testing.T) {
 		t.Fatal(err)
 	}
 	old := testCookie(t, w, sessionCookie)
-	if session, valid := m.Session(browserRequest(http.MethodGet, "/", old)); !valid || session.Account != "local:operator" {
-		t.Fatalf("session valid = %v, account = %q", valid, session.Account)
+	if session, valid := m.Session(browserRequest(http.MethodGet, "/", old)); !valid ||
+		session.Account != "local:operator" || session.DisplayName != "local:operator" {
+		t.Fatalf("session valid = %v, account = %q, display name = %q", valid, session.Account, session.DisplayName)
 	}
 	w = httptest.NewRecorder()
 	r.AddCookie(old)
@@ -174,8 +175,8 @@ func TestLoginRateAndTrustedProxy(t *testing.T) {
 }
 
 type exchange struct {
-	challenge string
-	claims    map[string]any
+	challenge, userInfoSubject string
+	claims                     map[string]any
 }
 
 func TestOIDCPKCEStateNonceAndGroup(t *testing.T) {
@@ -184,6 +185,7 @@ func TestOIDCPKCEStateNonceAndGroup(t *testing.T) {
 		t.Fatal(err)
 	}
 	exchanges := make(chan exchange, 1)
+	const email = "admin@example.test"
 	var issuer string
 	idp := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -192,6 +194,7 @@ func TestOIDCPKCEStateNonceAndGroup(t *testing.T) {
 			json.NewEncoder(w).Encode(map[string]any{
 				"issuer": issuer, "authorization_endpoint": issuer + "/authorize",
 				"token_endpoint": issuer + "/token", "jwks_uri": issuer + "/keys",
+				"userinfo_endpoint":                     issuer + "/userinfo",
 				"id_token_signing_alg_values_supported": []string{"RS256"},
 				"token_endpoint_auth_methods_supported": []string{"client_secret_basic"},
 			})
@@ -220,7 +223,19 @@ func TestOIDCPKCEStateNonceAndGroup(t *testing.T) {
 				t.Error(err)
 				return
 			}
-			json.NewEncoder(w).Encode(map[string]string{"access_token": "mock-token", "token_type": "Bearer", "id_token": token})
+			json.NewEncoder(w).Encode(map[string]string{"access_token": "mock-token-" + x.userInfoSubject, "token_type": "Bearer", "id_token": token})
+		case "/userinfo":
+			var subject string
+			switch r.Header.Get("Authorization") {
+			case "Bearer mock-token-admin-1":
+				subject = "admin-1"
+			case "Bearer mock-token-other":
+				subject = "other"
+			default:
+				w.WriteHeader(http.StatusUnauthorized)
+				return
+			}
+			json.NewEncoder(w).Encode(map[string]string{"sub": subject, "email": email})
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -228,18 +243,23 @@ func TestOIDCPKCEStateNonceAndGroup(t *testing.T) {
 	defer idp.Close()
 	issuer = idp.URL
 	cases := []struct {
-		name, claim string
-		value       any
-		allowed     bool
-		adminGroup  string
+		name, claim                  string
+		value                        any
+		allowed                      bool
+		adminGroup                   string
+		userInfoSubject, displayName string
 	}{
 		{name: "wrong group", claim: "groups", value: []string{"Admin"}},
 		{name: "missing group", claim: "groups"},
 		{name: "wrong audience", claim: "aud", value: "another-client"},
 		{name: "wrong nonce", claim: "nonce", value: "another-login"},
-		{name: "default admin group", allowed: true},
-		{name: "overridden admin group", claim: "groups", value: []string{"marco-admins"}, allowed: true, adminGroup: "marco-admins"},
+		{name: "default admin group", allowed: true, displayName: email},
+		{name: "overridden admin group", claim: "groups", value: []string{"marco-admins"}, allowed: true, adminGroup: "marco-admins", displayName: email},
 		{name: "override excludes default group", adminGroup: "marco-admins"},
+		{name: "email from userinfo", claim: "email", allowed: true, userInfoSubject: "admin-1", displayName: email},
+		{name: "userinfo subject mismatch", claim: "email", allowed: true, userInfoSubject: "other", displayName: "OIDC administrator"},
+		{name: "no email available", claim: "email", allowed: true, displayName: "OIDC administrator"},
+		{name: "non-string email", claim: "email", value: 42, allowed: true, displayName: "OIDC administrator"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -258,11 +278,11 @@ func TestOIDCPKCEStateNonceAndGroup(t *testing.T) {
 			params := authorization.Query()
 			if authorization.Path != "/authorize" || params.Get("code_challenge_method") != "S256" ||
 				params.Get("response_type") != "code" || params.Get("state") == "" || params.Get("nonce") == "" ||
-				params.Get("scope") != "openid groups" {
+				params.Get("scope") != "openid groups email" {
 				t.Fatal("authorization request missing protocol fields")
 			}
 			claims := map[string]any{"iss": issuer, "sub": "admin-1", "aud": "marco", "exp": time.Now().Add(time.Hour).Unix(),
-				"iat": time.Now().Unix(), "nonce": params.Get("nonce"), "groups": []string{"users", "admin"}}
+				"iat": time.Now().Unix(), "nonce": params.Get("nonce"), "groups": []string{"users", "admin"}, "email": email}
 			if tc.claim != "" {
 				if tc.value == nil {
 					delete(claims, tc.claim)
@@ -270,7 +290,7 @@ func TestOIDCPKCEStateNonceAndGroup(t *testing.T) {
 					claims[tc.claim] = tc.value
 				}
 			}
-			exchanges <- exchange{challenge: params.Get("code_challenge"), claims: claims}
+			exchanges <- exchange{challenge: params.Get("code_challenge"), userInfoSubject: tc.userInfoSubject, claims: claims}
 			path := CallbackPath + "?code=test-code&state=" + url.QueryEscape(params.Get("state"))
 			if _, err := m.FinishOIDC(httptest.NewRecorder(), browserRequest(http.MethodGet, path)); !errors.Is(err, ErrCredentials) {
 				t.Fatalf("unbound browser accepted: %v", err)
@@ -282,9 +302,10 @@ func TestOIDCPKCEStateNonceAndGroup(t *testing.T) {
 				if err != nil || account != issuer+"|admin-1" {
 					t.Fatalf("valid ID token failed: %q %v", account, err)
 				}
-				session := testCookie(t, w, sessionCookie)
-				if _, valid := m.Session(browserRequest(http.MethodGet, "/", session)); !valid {
-					t.Fatal("OIDC did not provision a session")
+				cookie := testCookie(t, w, sessionCookie)
+				if session, valid := m.Session(browserRequest(http.MethodGet, "/", cookie)); !valid ||
+					session.Account != account || session.DisplayName != tc.displayName {
+					t.Fatalf("session valid = %v, account = %q, display name = %q, want %q", valid, session.Account, session.DisplayName, tc.displayName)
 				}
 			} else if !errors.Is(err, ErrCredentials) {
 				t.Fatalf("invalid ID token accepted: %q %v", account, err)
@@ -293,6 +314,43 @@ func TestOIDCPKCEStateNonceAndGroup(t *testing.T) {
 				t.Fatalf("replayed callback: %v", err)
 			}
 		})
+	}
+}
+
+func TestUpgradeExistingOIDCSession(t *testing.T) {
+	ctx := t.Context()
+	db, err := sql.Open("sqlite", t.TempDir()+"/admin.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.ExecContext(ctx, `CREATE TABLE admin_sessions (
+		token TEXT PRIMARY KEY, account TEXT NOT NULL, csrf TEXT NOT NULL,
+		scope TEXT NOT NULL, expires INTEGER NOT NULL
+	)`); err != nil {
+		t.Fatal(err)
+	}
+	settings := Settings{PublicURL: "https://marco.test", Issuer: "https://oidc.test", ClientID: "marco", AdminGroup: "admin"}
+	const account = "https://oidc.test|admin-1"
+	scope := digest(settings.Issuer + "\x00" + settings.ClientID + "\x00" + settings.AdminGroup)
+	token, err := randomToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ExecContext(ctx, "INSERT INTO admin_sessions VALUES (?, ?, ?, ?, ?)",
+		digest(token), account, "existing-csrf", scope, time.Now().Add(time.Hour).Unix()); err != nil {
+		t.Fatal(err)
+	}
+	r := browserRequest(http.MethodGet, "/", &http.Cookie{Name: sessionCookie, Value: token})
+	for range 2 {
+		m, err := New(ctx, testStore{db}, settings)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if session, valid := m.Session(r); !valid || session.Account != account ||
+			session.CSRF != "existing-csrf" || session.DisplayName != "OIDC administrator" {
+			t.Fatalf("session valid = %v, account = %q, display name = %q", valid, session.Account, session.DisplayName)
+		}
 	}
 }
 

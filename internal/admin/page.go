@@ -19,7 +19,8 @@ import (
 )
 
 type page struct {
-	Title, Path, Account, CSRF string
+	Title, Path, CSRF          string
+	DisplayName                string
 	Revision, EditRevision     uint64
 	Nav                        []navItem
 	Desired                    config.Desired
@@ -82,7 +83,7 @@ func (s *server) page(w http.ResponseWriter, r *http.Request, session auth.Sessi
 		state = s.hooks.Snapshot()
 	}
 	p := page{
-		Title: "Overview", Path: path, Account: session.Account, CSRF: session.CSRF, Revision: state.Revision,
+		Title: "Overview", Path: path, DisplayName: session.DisplayName, CSRF: session.CSRF, Revision: state.Revision,
 		EditRevision: state.Revision, Nav: navigation, Desired: state.Desired, Feedback: f,
 		Ready: s.hooks.Ready != nil && s.hooks.Ready(),
 	}

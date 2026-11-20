@@ -26,6 +26,19 @@ import (
 
 type testDB struct{ db *sql.DB }
 
+func TestHeaderDisplaysAccountEmail(t *testing.T) {
+	s := &server{}
+	r := httptest.NewRequest(http.MethodGet, "https://marco.test/policies", nil)
+	w := httptest.NewRecorder()
+	session := auth.Session{Account: "https://oidc.test|admin-1", DisplayName: "admin&ops@example.test"}
+	s.page(w, r, session, r.URL.Path, http.StatusOK, feedback{})
+	body := w.Body.String()
+	if w.Code != http.StatusOK || strings.Contains(body, session.Account) ||
+		!strings.Contains(body, `<span class="account-name" title="admin&amp;ops@example.test">admin&amp;ops@example.test</span>`) {
+		t.Fatalf("unexpected account header in HTTP %d response", w.Code)
+	}
+}
+
 func TestUnavailableAuthenticationReturnsServiceUnavailable(t *testing.T) {
 	handler := New(nil, nil, Hooks{Ready: func() bool { return true }})
 	for _, path := range []string{"/", "/login"} {

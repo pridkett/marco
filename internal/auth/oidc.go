@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"net/http"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/coreos/go-oidc/v3/oidc"
@@ -17,6 +18,7 @@ const CallbackPath = "/auth/callback"
 type provider struct {
 	oauth    oauth2.Config
 	verifier *oidc.IDTokenVerifier
+	userInfo func(context.Context, oauth2.TokenSource) (*oidc.UserInfo, error)
 }
 
 var defaultOIDCClient = &http.Client{
@@ -61,11 +63,14 @@ func (m *Manager) provider(ctx context.Context) (*provider, error) {
 			ClientSecret: m.cfg.ClientSecret,
 			RedirectURL:  m.origin.String() + CallbackPath,
 			Endpoint:     endpoint,
-			Scopes:       []string{oidc.ScopeOpenID, "groups"},
+			Scopes:       []string{oidc.ScopeOpenID, "groups", "email"},
 		},
 		verifier: p.VerifierContext(oidc.ClientContext(context.Background(), m.oidcClient), &oidc.Config{
 			ClientID: m.cfg.ClientID,
 		}),
+	}
+	if _, err := parseHTTPS(p.UserInfoEndpoint()); err == nil {
+		result.userInfo = p.UserInfo
 	}
 	m.oidcMu.Lock()
 	defer m.oidcMu.Unlock()
@@ -147,7 +152,8 @@ func (m *Manager) FinishOIDC(w http.ResponseWriter, r *http.Request) (string, er
 	if err != nil {
 		return "", ErrCredentials
 	}
-	token, err := p.oauth.Exchange(oidc.ClientContext(ctx, m.oidcClient), query.Get("code"), oauth2.VerifierOption(verifier))
+	ctx = oidc.ClientContext(ctx, m.oidcClient)
+	token, err := p.oauth.Exchange(ctx, query.Get("code"), oauth2.VerifierOption(verifier))
 	if err != nil {
 		return "", ErrCredentials
 	}
@@ -161,12 +167,21 @@ func (m *Manager) FinishOIDC(w http.ResponseWriter, r *http.Request) (string, er
 	}
 	var claims struct {
 		Groups []string `json:"groups"`
+		Email  any      `json:"email"`
 	}
 	if err := idToken.Claims(&claims); err != nil || !slices.Contains(claims.Groups, m.cfg.AdminGroup) {
 		return "", ErrCredentials
 	}
+	email, _ := claims.Email.(string)
+	email = strings.TrimSpace(email)
+	if email == "" && p.userInfo != nil && token.AccessToken != "" {
+		info, err := p.userInfo(ctx, oauth2.StaticTokenSource(token))
+		if err == nil && info.Subject == idToken.Subject {
+			email = strings.TrimSpace(info.Email)
+		}
+	}
 	account := idToken.Issuer + "|" + idToken.Subject
-	if err := m.startSession(w, r, account, m.oidcScope); err != nil {
+	if err := m.startSession(w, r, account, m.oidcScope, email); err != nil {
 		return "", err
 	}
 	return account, nil
