@@ -321,7 +321,8 @@ func TestDashboardBlockingControls(t *testing.T) {
 	}
 	f.login(t)
 	checkContent(t, request(f.handler, http.MethodGet, "/", nil, f.cookie),
-		"Blocking active", "Pause blocking", "Top clients", "Top queried domains", "Top blocked domains", "Indefinite")
+		"Blocking active", "Pause blocking", "Top clients", "Top queried domains", "Top blocked domains",
+		"Upstream blocks", "Top upstream-blocked domains", "Indefinite")
 
 	change := func(token, duration string, status int) *httptest.ResponseRecorder {
 		t.Helper()
@@ -580,6 +581,14 @@ func TestQueryBadge(t *testing.T) {
 		entry := querylog.Entry{Origin: tc.origin, RCode: tc.code, Cache: tc.cache}
 		if got := queryBadge(entry).Kind; got != tc.want {
 			t.Errorf("%s %s (cache %q): got %q, want %q", tc.origin, entry.RCodeLabel(), tc.cache, got, tc.want)
+		}
+	}
+	// Upstream blocks carry the upstream's reason in Rule and must not look
+	// like a local allow rule matched.
+	for _, origin := range []string{"upstream", "cache"} {
+		entry := querylog.Entry{Origin: origin, RCode: dns.RcodeSuccess, Reason: querylog.UpstreamBlocked, Rule: "Blocked by NextDNS"}
+		if got := queryBadge(entry); got != (outcomeBadge{"upstream-blocked", "Upstream block"}) {
+			t.Errorf("%s upstream block: got %+v", origin, got)
 		}
 	}
 }

@@ -76,6 +76,7 @@ func (s *server) managementDashboard(ctx context.Context, _ auth.AccessToken, in
 			rankings.Clients = emptySlice(rankings.Clients)
 			rankings.Domains = emptySlice(rankings.Domains)
 			rankings.Blocked = emptySlice(rankings.Blocked)
+			rankings.UpstreamBlocked = emptySlice(rankings.UpstreamBlocked)
 			result.Rankings = &rankings
 		}
 	}

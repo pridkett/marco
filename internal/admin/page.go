@@ -414,6 +414,9 @@ func queryBadge(entry querylog.Entry) outcomeBadge {
 	if entry.RCode != dns.RcodeSuccess && entry.RCode != dns.RcodeNameError {
 		return outcomeBadge{"error", "Error"}
 	}
+	if entry.UpstreamBlocked() {
+		return outcomeBadge{"upstream-blocked", "Upstream block"}
+	}
 	if entry.AllowedByRule() {
 		return outcomeBadge{"allowed", "Allowed"}
 	}

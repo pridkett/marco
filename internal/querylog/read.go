@@ -13,23 +13,30 @@ import (
 )
 
 type Counts struct {
-	Queries uint64        `json:"queries"`
-	Local   uint64        `json:"local"`
-	Cache   uint64        `json:"cacheHits"`
-	Misses  uint64        `json:"cacheMisses"`
-	Blocks  uint64        `json:"blocks"`
-	Errors  uint64        `json:"errors"`
-	Latency time.Duration `json:"latencyNanoseconds"`
+	Queries uint64 `json:"queries"`
+	Local   uint64 `json:"local"`
+	Cache   uint64 `json:"cacheHits"`
+	Misses  uint64 `json:"cacheMisses"`
+	Blocks  uint64 `json:"blocks"`
+	// UpstreamBlocks counts answers an upstream resolver marked as blocked.
+	// They are not included in Blocks, which counts Marco's own policy.
+	UpstreamBlocks uint64        `json:"upstreamBlocks"`
+	Errors         uint64        `json:"errors"`
+	Latency        time.Duration `json:"latencyNanoseconds"`
 }
 
+// UpstreamBlocked is the reason recorded when an upstream resolver blocked a query.
+const UpstreamBlocked = "upstream-blocked"
+
 type counters struct {
-	queries atomic.Uint64
-	local   atomic.Uint64
-	cache   atomic.Uint64
-	misses  atomic.Uint64
-	blocks  atomic.Uint64
-	errors  atomic.Uint64
-	latency atomic.Int64
+	queries  atomic.Uint64
+	local    atomic.Uint64
+	cache    atomic.Uint64
+	misses   atomic.Uint64
+	blocks   atomic.Uint64
+	upstream atomic.Uint64
+	errors   atomic.Uint64
+	latency  atomic.Int64
 }
 
 func (c *counters) observe(event contract.Event) {
@@ -42,6 +49,9 @@ func (c *counters) observe(event contract.Event) {
 		c.cache.Add(1)
 	case "policy":
 		c.blocks.Add(1)
+	}
+	if event.Reason == UpstreamBlocked {
+		c.upstream.Add(1)
 	}
 	if event.Cache == "hit" && event.Origin != "cache" {
 		c.cache.Add(1)
@@ -57,7 +67,7 @@ func (c *counters) observe(event contract.Event) {
 func (c *counters) read() Counts {
 	return Counts{
 		Queries: c.queries.Load(), Local: c.local.Load(), Cache: c.cache.Load(),
-		Blocks: c.blocks.Load(), Errors: c.errors.Load(), Misses: c.misses.Load(),
+		Blocks: c.blocks.Load(), UpstreamBlocks: c.upstream.Load(), Errors: c.errors.Load(), Misses: c.misses.Load(),
 		Latency: time.Duration(c.latency.Load()),
 	}
 }
@@ -68,6 +78,7 @@ func (c *Counts) add(other Counts) {
 	c.Cache += other.Cache
 	c.Misses += other.Misses
 	c.Blocks += other.Blocks
+	c.UpstreamBlocks += other.UpstreamBlocks
 	c.Errors += other.Errors
 	c.Latency += other.Latency
 }
@@ -167,10 +178,15 @@ func (e Entry) RCodeLabel() string {
 	return strconv.Itoa(e.RCode)
 }
 
-// Resolved entries only carry a rule reference when an allow rule matched.
+// Resolved entries only carry a rule reference when an allow rule matched or,
+// for upstream blocks, to hold the upstream's reason.
 func (e Entry) AllowedByRule() bool {
-	return e.Rule != "" && (e.Origin == "local" || e.Origin == "cache" || e.Origin == "upstream")
+	return e.Rule != "" && e.Reason != UpstreamBlocked &&
+		(e.Origin == "local" || e.Origin == "cache" || e.Origin == "upstream")
 }
+
+// UpstreamBlocked reports whether an upstream resolver blocked this query.
+func (e Entry) UpstreamBlocked() bool { return e.Reason == UpstreamBlocked }
 
 type Page struct {
 	Entries []Entry
@@ -205,12 +221,14 @@ func (l *Log) Search(ctx context.Context, f Filter) (Page, error) {
 	switch outcome := strings.ToLower(strings.TrimSpace(f.Outcome)); outcome {
 	case "":
 	case "allowed":
-		clauses = append(clauses, "(rule <> '' AND origin IN ('local', 'cache', 'upstream') AND rcode IN (?, ?))")
-		args = append(args, dns.RcodeSuccess, dns.RcodeNameError)
+		clauses = append(clauses, "(rule <> '' AND reason <> ? AND origin IN ('local', 'cache', 'upstream') AND rcode IN (?, ?))")
+		args = append(args, UpstreamBlocked, dns.RcodeSuccess, dns.RcodeNameError)
 	default:
 		switch outcome {
 		case "blocked":
 			outcome = "policy"
+		case "upstream blocked", "upstream block":
+			outcome = UpstreamBlocked
 		case "cache hit":
 			outcome = "cache"
 		case "local dns":

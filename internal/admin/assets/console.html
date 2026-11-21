@@ -354,7 +354,7 @@
                 <dt>DNS response</dt><dd>{{.RCodeLabel}}</dd>
                 <dt>Source</dt><dd>{{label .Origin}}</dd>
                 {{with .Reason}}<dt>Reason</dt><dd>{{.}}</dd>{{end}}
-                {{with .Rule}}<dt>{{if eq $badge.Kind "allowed"}}Allow rule{{else}}Rule{{end}}</dt><dd>{{.}}</dd>{{end}}
+                {{with .Rule}}<dt>{{if eq $badge.Kind "allowed"}}Allow rule{{else if eq $badge.Kind "upstream-blocked"}}Upstream reason{{else}}Rule{{end}}</dt><dd>{{.}}</dd>{{end}}
                 {{with .Cache}}<dt>Cache</dt><dd>{{.}}</dd>{{end}}
               </dl>
             </details>

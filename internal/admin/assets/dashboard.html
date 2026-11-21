@@ -45,6 +45,7 @@
   <dl class="metrics dashboard-metrics" aria-label="DNS activity for {{.Range}}">
     <div class="panel metric"><dt>DNS queries</dt><dd>{{count .Counts.Queries}}</dd></div>
     <div class="panel metric blocked-metric"><dt>Policy blocks</dt><dd>{{count .Counts.Blocks}}</dd></div>
+    <div class="panel metric blocked-metric"><dt>Upstream blocks</dt><dd>{{count .Counts.UpstreamBlocks}}</dd></div>
     <div class="panel metric"><dt>Local DNS hits</dt><dd>{{count .Counts.Local}}</dd></div>
     <div class="panel metric"><dt>Cache hits</dt><dd>{{count .Counts.Cache}}</dd></div>
   </dl>
