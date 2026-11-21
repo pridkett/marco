@@ -489,6 +489,7 @@ tr:last-child > td, tr:last-child > th { border-bottom: 0; }
 .dashboard-facts dd { margin: 0; text-align: end; font-weight: 600; font-variant-numeric: tabular-nums; }
 .dashboard-note { padding: .85rem 1.15rem; font-size: .88rem; }
 .dashboard-note.panel { margin-bottom: 1.6rem; }
+.ranking-freshness { padding: 0 0 .75rem; }
 .error-text { color: var(--error); }
 .ranking-table { table-layout: fixed; }
 .ranking-table :is(th, td) { padding: .48rem .85rem; }

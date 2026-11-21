@@ -154,7 +154,61 @@ function setupTraffic(canvas) {
   matchMedia('(prefers-color-scheme: dark)').addEventListener('change', draw);
 }
 
+// Rankings for a busy day take a few seconds on small devices. While they are
+// being calculated the page shows older rankings or a notice, then swaps in the
+// new rankings when they are ready. Polling stops once they arrive.
+function setupRankings(section) {
+  const delay = 3000;
+  const maxAttempts = 40;
+  let attempts = 0;
+  let timer = 0;
+  let busy = false;
+
+  const updating = () => section.hasAttribute('data-rankings-updating');
+  const schedule = () => {
+    if (!timer && updating() && attempts < maxAttempts) timer = setTimeout(check, delay);
+  };
+
+  async function check() {
+    timer = 0;
+    if (document.hidden || busy) return;
+    busy = true;
+    attempts++;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
+    try {
+      const response = await fetch(window.location.href, { redirect: 'error', signal: controller.signal });
+      if (!response.ok) throw new Error('Dashboard request failed.');
+      const page = new DOMParser().parseFromString(await response.text(), 'text/html');
+      const next = page.querySelector('[data-rankings]');
+      if (next && !next.hasAttribute('data-rankings-updating')) {
+        section.replaceWith(next);
+        section = next;
+        return;
+      }
+    } catch {
+      // Keep the rankings already shown and try again on the next attempt.
+    } finally {
+      clearTimeout(timeout);
+      busy = false;
+    }
+    if (attempts >= maxAttempts) {
+      const status = section.querySelector('[data-rankings-status]');
+      if (status) status.textContent = 'Rankings are taking longer than usual. Refresh the page to try again.';
+      return;
+    }
+    schedule();
+  }
+
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) schedule();
+  });
+  schedule();
+}
+
 const protection = document.querySelector('[data-protection]');
 if (protection) setupProtection(protection);
+const rankings = document.querySelector('[data-rankings]');
+if (rankings) setupRankings(rankings);
 const traffic = document.querySelector('[data-traffic-chart]');
 if (traffic) setupTraffic(traffic);

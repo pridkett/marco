@@ -2,6 +2,8 @@ package querylog
 
 import (
 	"context"
+	"errors"
+	"log/slog"
 	"time"
 
 	"github.com/miekg/dns"
@@ -88,15 +90,108 @@ type Rankings struct {
 	Blocked []RankedEntry `json:"blocked"`
 	// UpstreamBlocked ranks names an upstream resolver blocked.
 	UpstreamBlocked []RankedEntry `json:"upstreamBlocked"`
+	// AsOf is the end of the window these rankings cover.
+	AsOf time.Time `json:"asOf"`
+	// Updating reports that these rankings are out of date and newer ones are
+	// being calculated.
+	Updating bool `json:"updating"`
 }
 
-// TopQueries ranks retained history. Client keys have already passed through the
-// query log's configured anonymization before reaching this query.
+// ErrRankingsPending reports that no rankings exist yet for a window and the
+// first calculation is still running.
+var ErrRankingsPending = errors.New("query rankings are still being calculated")
+
+const (
+	// rankingMaxAge is how long a window's rankings are reused before a
+	// request starts a refresh.
+	rankingMaxAge = time.Minute
+	// rankingTimeout bounds one background refresh. A day of history takes a
+	// few seconds to rank on a Raspberry Pi, far longer than a page waits.
+	rankingTimeout = 30 * time.Second
+)
+
+type rankingEntry struct {
+	result  Rankings
+	until   time.Time     // End of the window the result covers. Zero until the first success.
+	pending chan struct{} // Closed when the running refresh finishes. Nil when idle.
+	err     error         // Most recent refresh failure.
+}
+
+// TopQueries ranks retained history between from and until. Results are cached
+// per window length for up to a minute, and nothing is calculated unless a
+// caller asks. When a refresh outlasts ctx, it keeps running in the background
+// and the previous result is returned with Updating set, however old it is,
+// since AsOf tells the reader its age. With no previous result, the error is
+// ErrRankingsPending. Client keys have already passed through the query log's
+// configured anonymization before reaching this query.
 func (l *Log) TopQueries(ctx context.Context, from, until time.Time) (Rankings, error) {
-	var top Rankings
 	if !l.settings.Enabled {
-		return top, nil
+		return Rankings{}, nil
 	}
+	// Dashboard windows start on a minute boundary and end now, so their length
+	// drifts within a minute. Rounding up keeps one cache entry per range.
+	window := (until.Sub(from) + time.Minute - 1).Truncate(time.Minute)
+	l.rankMu.Lock()
+	entry := l.ranks[window]
+	if entry == nil {
+		entry = &rankingEntry{}
+		l.ranks[window] = entry
+	}
+	if !entry.until.IsZero() && !until.Before(entry.until) && until.Sub(entry.until) < rankingMaxAge {
+		result := entry.result
+		l.rankMu.Unlock()
+		return result, nil
+	}
+	if entry.pending == nil {
+		entry.pending = make(chan struct{})
+		go l.refreshRankings(entry, from, until)
+	}
+	pending := entry.pending
+	l.rankMu.Unlock()
+
+	select {
+	case <-pending:
+	case <-ctx.Done():
+	}
+	l.rankMu.Lock()
+	defer l.rankMu.Unlock()
+	if !entry.until.IsZero() {
+		result := entry.result
+		result.Updating = entry.pending != nil
+		return result, nil
+	}
+	if entry.pending != nil {
+		return Rankings{}, ErrRankingsPending
+	}
+	return Rankings{}, entry.err
+}
+
+func (l *Log) refreshRankings(entry *rankingEntry, from, until time.Time) {
+	ctx, cancel := context.WithTimeout(l.rankCtx, rankingTimeout)
+	defer cancel()
+	if l.rankHook != nil {
+		l.rankHook()
+	}
+	result, err := l.computeRankings(ctx, from, until)
+	if err != nil && l.rankCtx.Err() == nil {
+		slog.Warn("could not rank query history", "error", err)
+	}
+	l.rankMu.Lock()
+	defer l.rankMu.Unlock()
+	if err == nil {
+		result.AsOf = until
+		entry.result, entry.until, entry.err = result, until, nil
+	} else {
+		entry.err = err
+	}
+	close(entry.pending)
+	entry.pending = nil
+}
+
+// computeRankings runs the ranking queries one at a time, so a refresh holds at
+// most one of the history's read connections and the query log stays usable.
+func (l *Log) computeRankings(ctx context.Context, from, until time.Time) (Rankings, error) {
+	var top Rankings
 	if cutoff := until.Add(-l.settings.Retention); cutoff.After(from) {
 		from = cutoff
 	}

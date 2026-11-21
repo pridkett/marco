@@ -57,6 +57,14 @@ type Log struct {
 	dropped  atomic.Uint64
 	recent   [1440]atomic.Pointer[bucket]
 	lastErr  atomic.Pointer[string]
+
+	// Rankings are cached per window and refreshed in the background, so a
+	// slow device never discards a computation because a page gave up on it.
+	rankMu     sync.Mutex
+	ranks      map[time.Duration]*rankingEntry
+	rankCtx    context.Context
+	rankCancel context.CancelFunc
+	rankHook   func() // Tests use it to hold a refresh open. Nil in production.
 }
 
 func Open(path string, cfg Settings) (*Log, error) {
@@ -105,9 +113,17 @@ func Open(path string, cfg Settings) (*Log, error) {
 		db.Close()
 		return nil, fmt.Errorf("initialize query history: %w", err)
 	}
-	if err := log.restoreRecent(ctx, time.Now()); err != nil {
-		slog.Warn("could not restore recent DNS counters from query history")
+	// Restoring a day of counters reads every recent row. It takes well over a
+	// second on a Raspberry Pi, so it gets its own deadline instead of the
+	// remainder of the database setup budget.
+	restoreCtx, cancelRestore := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancelRestore()
+	if err := log.restoreRecent(restoreCtx, time.Now()); err != nil {
+		slog.Warn("could not restore recent DNS counters from query history", "error", err)
 	}
+	log.rankingIndexes()
+	log.ranks = make(map[time.Duration]*rankingEntry)
+	log.rankCtx, log.rankCancel = context.WithCancel(context.Background())
 	log.pending = make(chan contract.Event, cfg.Queue)
 	log.stop, log.stopped = make(chan struct{}), make(chan struct{})
 	go log.run()
@@ -150,6 +166,24 @@ func (l *Log) init(ctx context.Context) error {
 	}
 	l.maxPages = effective
 	return l.flush(ctx, nil)
+}
+
+// rankingIndexes adds small partial indexes so block rankings read only
+// blocked rows instead of the whole window. They are an optimization, so a
+// failure, such as a history already at its page budget, is only logged.
+// Building them over existing history can take a few seconds on small
+// devices, so they get a longer deadline than the rest of startup.
+func (l *Log) rankingIndexes() {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	for _, index := range []string{
+		`CREATE INDEX IF NOT EXISTS dns_queries_policy ON dns_queries(time, name) WHERE origin = 'policy'`,
+		`CREATE INDEX IF NOT EXISTS dns_queries_upstream_blocked ON dns_queries(time, name) WHERE reason = '` + UpstreamBlocked + `'`,
+	} {
+		if _, err := l.writer.ExecContext(ctx, index); err != nil {
+			slog.Warn("could not create query history ranking index", "error", err)
+		}
+	}
 }
 
 // Observe records statistics and offers individual events without waiting for
@@ -337,6 +371,7 @@ func (l *Log) Close() error {
 		return nil
 	}
 	l.close.Do(func() {
+		l.rankCancel()
 		close(l.stop)
 		<-l.stopped
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)

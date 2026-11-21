@@ -593,6 +593,48 @@ func TestQueryBadge(t *testing.T) {
 	}
 }
 
+// dashboard.js polls while the rankings section is marked as updating and swaps
+// in the section once a response no longer carries the mark.
+func TestRankingsFreshnessMarkup(t *testing.T) {
+	asOf := time.Date(2026, 11, 21, 14, 5, 0, 0, time.UTC)
+	panels := []rankPanel{{Title: "Top clients", Label: "Client", Empty: "No client queries in this range."}}
+	for _, tc := range []struct {
+		name          string
+		dashboard     dashboard
+		want, missing []string
+	}{
+		{"calculating", dashboard{RankPending: true},
+			[]string{"data-rankings-updating", "Calculating query rankings. They appear here when ready."},
+			[]string{"Top clients", "temporarily unavailable"}},
+		{"updating", dashboard{RankUpdating: true, RankAsOf: asOf, Rankings: panels},
+			[]string{"data-rankings-updating", `Rankings as of <time datetime="2026-11-21T14:05:00Z">Nov 21, 14:05 UTC</time>. Updating now.`, "Top clients"},
+			nil},
+		{"current", dashboard{RankAsOf: asOf, Rankings: panels},
+			[]string{"data-rankings", "Top clients"},
+			[]string{"data-rankings-updating", "Rankings as of"}},
+		{"failed", dashboard{RankError: true},
+			[]string{"Query rankings are temporarily unavailable."},
+			[]string{"data-rankings-updating"}},
+	} {
+		p := &page{Dashboard: tc.dashboard}
+		p.Stats.Enabled = true
+		var out strings.Builder
+		if err := views.ExecuteTemplate(&out, "overview", p); err != nil {
+			t.Fatal(err)
+		}
+		for _, want := range tc.want {
+			if !strings.Contains(out.String(), want) {
+				t.Errorf("%s: missing %q", tc.name, want)
+			}
+		}
+		for _, missing := range tc.missing {
+			if strings.Contains(out.String(), missing) {
+				t.Errorf("%s: unexpected %q", tc.name, missing)
+			}
+		}
+	}
+}
+
 func TestConsoleStylesheetVersion(t *testing.T) {
 	f := setup(t)
 	css := request(f.handler, http.MethodGet, "/assets/admin.css", nil)
