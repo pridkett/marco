@@ -460,7 +460,7 @@ func TestQueryHistorySummaryAndDetails(t *testing.T) {
 		`<dt>Allow rule</dt><dd>adguard-filters-1/@@||js.monitor.azure.com^|</dd>`, `<dt>Source</dt><dd>upstream</dd>`,
 		`<dt>DNS response</dt><dd>NOERROR</dd>`, `<dt>Cache</dt><dd>miss</dd>`,
 		`<tr data-query-row>`, `<script src="/assets/query-log.js" defer></script>`)
-	if csp := response.Header().Get("Content-Security-Policy"); !strings.Contains(csp, "script-src 'self'; connect-src 'self'") {
+	if csp := response.Header().Get("Content-Security-Policy"); !strings.Contains(csp, "script-src 'self'") || !strings.Contains(csp, "connect-src 'self'") {
 		t.Fatalf("query log script and fetch are blocked by CSP: %q", csp)
 	}
 	body := response.Body.String()
@@ -602,6 +602,49 @@ func TestConsoleStylesheetVersion(t *testing.T) {
 	stale := request(f.handler, http.MethodGet, "/assets/admin.css?v=previous", nil)
 	if css.Header().Get("Cache-Control") != "no-store" || stale.Header().Get("Cache-Control") != "no-store" {
 		t.Fatal("served cacheable CSS under an unversioned or stale URL")
+	}
+}
+
+func TestJSONEditorAssetsAndRejectedDraft(t *testing.T) {
+	f := setup(t)
+	f.login(t)
+	const scriptPath = "/assets/json-editor.js"
+	asset := request(f.handler, "GET", scriptPath, nil)
+	if asset.Code != http.StatusOK || !strings.HasPrefix(asset.Header().Get("Content-Type"), "text/javascript") {
+		t.Fatalf("missing embedded JSON editor script: HTTP %d", asset.Code)
+	}
+
+	for _, tc := range []struct {
+		path    string
+		editors int
+	}{
+		{"/", 0},
+		{"/devices/edit?id=cam-01", 1},
+		{"/local-dns", 1},
+		{"/policies", 1},
+		{"/blocklists", 1},
+		{"/settings", 2},
+	} {
+		t.Run(tc.path, func(t *testing.T) {
+			page := request(f.handler, "GET", tc.path, nil, f.cookie)
+			checkContent(t, page, `src="`+scriptPath+`"`)
+			if got := strings.Count(page.Body.String(), "<textarea data-json-editor "); got != tc.editors {
+				t.Errorf("got %d native JSON fields, want %d", got, tc.editors)
+			}
+			if csp := page.Header().Get("Content-Security-Policy"); !strings.Contains(csp, "script-src 'self'") {
+				t.Errorf("editor script blocked by CSP: %s", csp)
+			}
+		})
+	}
+
+	draft := request(f.handler, "POST", "/settings/import", url.Values{
+		"csrf": {f.csrf}, "revision": {"4"}, "settings": {`{"draft": "</textarea>"}`},
+	}, f.cookie)
+	if draft.Code != http.StatusBadRequest ||
+		!strings.Contains(draft.Body.String(), `src="`+scriptPath+`"`) ||
+		!strings.Contains(draft.Body.String(), "&lt;/textarea&gt;") ||
+		!strings.Contains(draft.Header().Get("Content-Security-Policy"), "script-src 'self'") {
+		t.Fatalf("rejected settings did not return an escaped and editable draft: HTTP %d", draft.Code)
 	}
 }
 

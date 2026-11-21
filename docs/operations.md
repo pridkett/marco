@@ -39,6 +39,10 @@ Choose a hostname covered by the certificate, such as `marco.wagstrom.net` for a
 
 Replace the listen address with the resolver’s LAN address. Give the service user read access to the mounted certificate chain and private key. Restart Marco after renewal so it reloads the PEM files. If a reverse proxy terminates TLS, install the wildcard certificate there and keep Marco on the trusted loopback backend using the same public URL.
 
+## JSON settings
+
+The device, Local DNS, policy, blocklist, upstream pool, and portable settings forms highlight JSON as you type and show line numbers. The editor and JSON diagnostics follow your browser’s light or dark preference. Very large documents and browsers with scripting disabled use plain text fields so you can still edit and submit settings.
+
 ## DNS dashboard
 
 The dashboard defaults to 24 hours and also offers 15-minute and 1-hour views. When query history is enabled, Marco restores recent traffic counts from retained history at startup and displays client and domain rankings. Select a ranked client or domain to open the corresponding query log filter. When query history is disabled, the chart and summary counts cover only the current run.
