@@ -74,6 +74,7 @@
   {{if eq .Path "/query-log"}}{{template "history" .}}{{end}}
   {{if eq .Path "/settings"}}{{template "settings" .}}{{end}}
 </main>
+{{if hasJSONEditor .Path}}<script src="/assets/json-editor.js" defer></script>{{end}}
 </body>
 </html>
 {{end}}
@@ -142,7 +143,7 @@
 
 {{define "local-issues"}}
 {{with .LocalIssues}}
-<details class="panel section"><summary>Publication conflicts and warnings</summary><pre class="output">{{pretty .}}</pre></details>
+<details class="panel section"><summary>Publication conflicts and warnings</summary><pre class="output" data-json-output>{{pretty .}}</pre></details>
 {{end}}
 {{end}}
 
@@ -173,7 +174,7 @@
         {{range $name, $group := .Desired.Groups}}<option value="{{$name}}"{{if eq $name $.DeviceGroup}} selected{{end}}>{{$name}}</option>{{end}}
       </select>
     </label>
-    <label>Device settings <textarea name="settings" rows="12" spellcheck="false" required aria-describedby="device-help">{{.EditText}}</textarea></label>
+    <label>Device settings <textarea data-json-editor name="settings" rows="12" spellcheck="false" required aria-describedby="device-help">{{.EditText}}</textarea></label>
     <p id="device-help" class="muted">Set <code>name</code>, <code>unpublish</code>, <code>aliases</code>, <code>pinned</code> addresses, interface <code>links</code> or <code>policy</code> overrides. Omit inherited policy fields. Use an empty array to replace a group’s service or subscription selection.</p>
     <button type="submit" class="button primary">Save device</button>
   </form>
@@ -206,7 +207,7 @@
   <form action="/local-dns" method="post" class="stack">
     {{template "revision-fields" .}}
     {{template "edit-base" .EditBase}}
-    <label>Local DNS JSON <textarea name="settings" rows="16" spellcheck="false" required aria-describedby="local-help">{{.EditText}}</textarea></label>
+    <label>Local DNS JSON <textarea data-json-editor name="settings" rows="16" spellcheck="false" required aria-describedby="local-help">{{.EditText}}</textarea></label>
     <button type="submit" class="button primary">Save local DNS</button>
   </form>
 </section>
@@ -244,7 +245,7 @@
   <form action="/policies" method="post" class="stack">
     {{template "revision-fields" .}}
     {{template "edit-base" .EditBase}}
-    <label>Policy JSON <textarea name="settings" rows="16" spellcheck="false" required aria-describedby="policies-help">{{.EditText}}</textarea></label>
+    <label>Policy JSON <textarea data-json-editor name="settings" rows="16" spellcheck="false" required aria-describedby="policies-help">{{.EditText}}</textarea></label>
     <button type="submit" class="button primary">Save policies</button>
   </form>
 </section>
@@ -280,7 +281,7 @@
     </tbody>
   </table>
 </div>
-{{with .Status}}<details class="panel section"><summary>Refresh diagnostics</summary><pre class="output">{{pretty .}}</pre></details>{{end}}
+{{with .Status}}<details class="panel section"><summary>Refresh diagnostics</summary><pre class="output" data-json-output>{{pretty .}}</pre></details>{{end}}
 {{template "probe" .}}
 <section class="panel section">
   <h2>Subscription settings</h2>
@@ -292,7 +293,7 @@
   <form action="/blocklists" method="post" class="stack">
     {{template "revision-fields" .}}
     {{template "edit-base" .EditBase}}
-    <label>Subscriptions JSON <textarea name="settings" rows="12" spellcheck="false" required aria-describedby="subscription-help">{{.EditText}}</textarea></label>
+    <label>Subscriptions JSON <textarea data-json-editor name="settings" rows="12" spellcheck="false" required aria-describedby="subscription-help">{{.EditText}}</textarea></label>
     <button type="submit" class="button primary">Save subscriptions</button>
   </form>
 </section>
@@ -382,11 +383,11 @@
     <label>Pool <select name="pool" required><option value="">Choose a pool</option>{{range $id, $_ := .Desired.Pools}}<option value="{{$id}}">{{$id}}</option>{{end}}</select></label>
     <button type="submit" class="button">Test encrypted endpoints</button>
   </form>
-  {{with .Feedback.Upstream}}<pre class="output" aria-label="Upstream test results">{{pretty .}}</pre>{{end}}
+  {{with .Feedback.Upstream}}<pre class="output" data-json-output aria-label="Upstream test results">{{pretty .}}</pre>{{end}}
   <form action="/settings/upstreams" method="post" class="stack">
     {{template "revision-fields" .}}
     {{template "edit-base" .EditBase}}
-    <label>Pools JSON <textarea name="settings" rows="12" spellcheck="false" required>{{.PoolText}}</textarea></label>
+    <label>Pools JSON <textarea data-json-editor name="settings" rows="12" spellcheck="false" required>{{.PoolText}}</textarea></label>
     <button type="submit" class="button primary">Save upstreams</button>
   </form>
 </section>
@@ -397,14 +398,14 @@
   <form action="/settings/import" method="post" class="stack">
     {{template "revision-fields" .}}
     {{template "edit-base" .ImportBase}}
-    <label>Portable settings JSON <textarea name="settings" rows="8" spellcheck="false" required aria-describedby="import-help">{{.Feedback.SettingsImport}}</textarea></label>
+    <label>Portable settings JSON <textarea data-json-editor name="settings" rows="8" spellcheck="false" required aria-describedby="import-help">{{.Feedback.SettingsImport}}</textarea></label>
     <button type="submit" class="button primary">Apply settings import</button>
   </form>
 </section>
 <section class="panel section">
   <h2>Instance status</h2>
   <dl class="facts"><div><dt>DNS readiness</dt><dd>{{if .Ready}}Ready{{else}}Starting{{end}}</dd></div><div><dt>Active revision</dt><dd>{{.Revision}}</dd></div></dl>
-  {{with .Status}}<pre class="output">{{pretty .}}</pre>{{end}}
+  {{with .Status}}<pre class="output" data-json-output>{{pretty .}}</pre>{{end}}
 </section>
 {{end}}
 

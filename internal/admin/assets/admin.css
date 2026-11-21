@@ -19,6 +19,11 @@
   --query-cache-bg: #e0f2fe;
   --query-blocked: #854d0e;
   --query-blocked-bg: #fef3c7;
+  --json-key: #4434a6;
+  --json-string: #136650;
+  --json-number: #88450d;
+  --json-literal: #a12662;
+  --json-selection: #5850be38;
   font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 @media (prefers-color-scheme: dark) {
@@ -42,6 +47,11 @@
     --query-cache-bg: #173650;
     --query-blocked: #ffdb94;
     --query-blocked-bg: #432f17;
+    --json-key: #c6baff;
+    --json-string: #92e6be;
+    --json-number: #ffcb8e;
+    --json-literal: #ffa8ce;
+    --json-selection: #aab7ff50;
   }
 }
 * { box-sizing: border-box; }
@@ -113,6 +123,74 @@ input::placeholder { color: var(--muted); opacity: 1; }
 .facts dd, .probe dd { margin: 0; overflow-wrap: anywhere; }
 .probe { margin-top: 1rem; }
 .output { padding: .85rem; background: var(--faint); border: 1px solid var(--border); border-radius: .4rem; overflow-wrap: anywhere; white-space: pre-wrap; font-size: .83rem; line-height: 1.5; }
+.json-key { color: var(--json-key); }
+.json-string { color: var(--json-string); }
+.json-number { color: var(--json-number); }
+.json-literal { color: var(--json-literal); }
+.json-punctuation { color: var(--muted); }
+
+.json-editor {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  background: var(--faint);
+  border: 1px solid var(--border);
+  border-radius: .55rem;
+  overflow: hidden;
+}
+.json-editor:focus-within { outline: 3px solid var(--focus); outline-offset: 2px; }
+.json-editor.is-highlighted { grid-template-columns: max-content minmax(0, 1fr); }
+.json-editor-surface { position: relative; }
+.json-editor textarea, .json-editor-backdrop, .json-editor-gutter {
+  margin: 0;
+  font: 400 var(--json-font-size, .9rem)/1.6 ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-variant-ligatures: none;
+  white-space: pre;
+  tab-size: 4;
+}
+.json-editor textarea, .json-editor-backdrop { padding: .75rem .9rem; }
+.json-editor textarea {
+  position: relative;
+  display: block;
+  border: 0;
+  border-radius: 0;
+  outline: none;
+  background: transparent;
+  overflow: auto;
+  overflow-wrap: normal;
+  caret-color: var(--text);
+}
+.json-editor-gutter {
+  min-width: 4.5ch;
+  padding: .75rem .65rem;
+  text-align: end;
+  background: var(--panel);
+  color: var(--muted);
+  border-inline-end: 1px solid var(--border);
+  overflow: hidden;
+}
+.json-editor-backdrop {
+  position: absolute;
+  inset: 0 auto auto 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  color: var(--text);
+}
+.json-editor-gutter > span, .json-editor-backdrop > span { display: block; }
+.json-editor-gutter, .json-editor-backdrop { pointer-events: none; user-select: none; }
+.json-editor:not(.is-highlighted) :is(.json-editor-gutter, .json-editor-backdrop),
+.json-editor.is-composing .json-editor-backdrop { display: none; }
+.json-editor.is-highlighted:not(.is-composing) textarea,
+.json-editor.is-highlighted:not(.is-composing) textarea::selection { color: transparent; }
+.json-editor.is-highlighted:not(.is-composing) textarea::selection { background: var(--json-selection); }
+
+@media (forced-colors: active) {
+  .json-editor.is-highlighted { grid-template-columns: minmax(0, 1fr); }
+  .json-editor :is(.json-editor-gutter, .json-editor-backdrop) { display: none; }
+  .json-editor.is-highlighted:not(.is-composing) textarea { color: CanvasText; caret-color: CanvasText; }
+  .json-editor.is-highlighted:not(.is-composing) textarea::selection { color: HighlightText; background: Highlight; }
+}
+
 .message { padding: .7rem .9rem; border: 1px solid currentColor; border-radius: .4rem; }
 .message.error { color: var(--error); background: var(--error-bg); }
 .message.success { color: var(--success); background: var(--success-bg); }
@@ -177,6 +255,7 @@ tr:last-child > td, tr:last-child > th { border-bottom: 0; }
   .toolbar > label { flex: 1 1 8rem; }
   .mobile-table-note { display: block; font-size: .82rem; margin-bottom: .45rem; }
   input:not([type="hidden"]), select, textarea { font-size: 1rem; }
+  .json-editor { --json-font-size: 1rem; }
   th, td { padding: .55rem .6rem; }
 }
 

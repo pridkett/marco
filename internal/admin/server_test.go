@@ -538,6 +538,49 @@ func TestConsoleStylesheetVersion(t *testing.T) {
 	}
 }
 
+func TestJSONEditorAssetsAndRejectedDraft(t *testing.T) {
+	f := setup(t)
+	f.login(t)
+	const scriptPath = "/assets/json-editor.js"
+	asset := request(f.handler, "GET", scriptPath, nil)
+	if asset.Code != http.StatusOK || !strings.HasPrefix(asset.Header().Get("Content-Type"), "text/javascript") {
+		t.Fatalf("missing embedded JSON editor script: HTTP %d", asset.Code)
+	}
+
+	for _, tc := range []struct {
+		path    string
+		editors int
+	}{
+		{"/", 0},
+		{"/devices/edit?id=cam-01", 1},
+		{"/local-dns", 1},
+		{"/policies", 1},
+		{"/blocklists", 1},
+		{"/settings", 2},
+	} {
+		t.Run(tc.path, func(t *testing.T) {
+			page := request(f.handler, "GET", tc.path, nil, f.cookie)
+			checkContent(t, page, `src="`+scriptPath+`"`)
+			if got := strings.Count(page.Body.String(), "<textarea data-json-editor "); got != tc.editors {
+				t.Errorf("got %d native JSON fields, want %d", got, tc.editors)
+			}
+			if csp := page.Header().Get("Content-Security-Policy"); !strings.Contains(csp, "script-src 'self'") {
+				t.Errorf("editor script blocked by CSP: %s", csp)
+			}
+		})
+	}
+
+	draft := request(f.handler, "POST", "/settings/import", url.Values{
+		"csrf": {f.csrf}, "revision": {"4"}, "settings": {`{"draft": "</textarea>"}`},
+	}, f.cookie)
+	if draft.Code != http.StatusBadRequest ||
+		!strings.Contains(draft.Body.String(), `src="`+scriptPath+`"`) ||
+		!strings.Contains(draft.Body.String(), "&lt;/textarea&gt;") ||
+		!strings.Contains(draft.Header().Get("Content-Security-Policy"), "script-src 'self'") {
+		t.Fatalf("rejected settings did not return an escaped and editable draft: HTTP %d", draft.Code)
+	}
+}
+
 func TestRevisionConflictsCSRFSettingsAndAudit(t *testing.T) {
 	f := setup(t)
 	f.login(t)
