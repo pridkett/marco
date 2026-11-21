@@ -17,6 +17,12 @@ import (
 
 type Compiler func(state *config.State, previous *contract.View) (*contract.View, error)
 
+// CompileError means a candidate could not be built and was never published.
+type CompileError struct{ Cause error }
+
+func (e *CompileError) Error() string { return e.Cause.Error() }
+func (e *CompileError) Unwrap() error { return e.Cause }
+
 type snapshot struct {
 	state config.State
 	view  *contract.View
@@ -98,7 +104,7 @@ func (p *Publisher) Update(ctx context.Context, base uint64, change func(*config
 	}
 	view, err := p.build(&next, old.view)
 	if err != nil {
-		return old.state.Revision, err
+		return old.state.Revision, &CompileError{Cause: err}
 	}
 	view.Revision = next.Revision
 	if err := p.store.Save(ctx, old.state, next); err != nil {

@@ -47,6 +47,10 @@ func policyConfig(d config.Desired) policySettings {
 	return policySettings{d.Default, d.Groups, d.Assignments, d.Services}
 }
 
+func (cfg policySettings) apply(d *config.Desired) {
+	d.Default, d.Groups, d.Assignments, d.Services = cfg.Default, cfg.Groups, cfg.Assignments, cfg.Services
+}
+
 type feedback struct {
 	Error, Message string
 	Draft          string
@@ -246,8 +250,7 @@ func changeFor(operation string, get func(string) string) (func(*config.State) e
 			return nil, err
 		}
 		return func(s *config.State) error {
-			d := &s.Desired
-			d.Default, d.Groups, d.Assignments, d.Services = cfg.Default, cfg.Groups, cfg.Assignments, cfg.Services
+			cfg.apply(&s.Desired)
 			return nil
 		}, nil
 	case "add-default-groups":

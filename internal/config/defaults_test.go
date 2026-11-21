@@ -40,11 +40,19 @@ func TestOIDCOnlyDeployment(t *testing.T) {
 		t.Fatal(err)
 	}
 	d.Admin.Password = SecretRef{}
+	d.Admin.ManagementAPI = true
+	if err := d.Validate(); err == nil {
+		t.Fatal("accepted the management API without OIDC")
+	}
 	d.Admin.Issuer = "https://issuer.test"
 	d.Admin.ClientID = "marco"
 	d.Admin.ClientSecret = SecretRef{Env: "MARCO_OIDC_CLIENT_SECRET"}
 	if err := d.Validate(); err != nil {
-		t.Fatalf("OIDC-only deployment with default group: %v", err)
+		t.Fatalf("OIDC-only deployment with management API: %v", err)
+	}
+	d.Admin.Listen = ""
+	if err := d.Validate(); err == nil {
+		t.Fatal("accepted the management API without an admin listener")
 	}
 }
 

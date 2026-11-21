@@ -58,23 +58,25 @@ var views = template.Must(template.New("").Funcs(template.FuncMap{
 }).ParseFS(assets, "assets/*.html"))
 
 type Hooks struct {
-	Catalog      *config.ServiceCatalog
-	MatchService func(string, string, uint16) filter.Match
-	Snapshot     func() config.State
-	Update       contract.Update
-	Status       func() any
-	Poll         func() error
-	Refresh      func(string) error
-	Preview      func(contract.Input) (contract.Selection, contract.Result)
-	Select       func(netip.Addr, time.Time) contract.Selection
-	Lookup       func(string, uint16) contract.LocalResult
-	Published    func(string) bool
-	LocalIssues  func() any
-	TestUpstream func(context.Context, string) (any, error)
-	Revision     func() uint64
-	Ready        func() bool
-	Blocking     func(time.Time) contract.BlockingPause
-	SetBlocking  func(context.Context, string, contract.BlockingPause) error
+	ManagementAPI bool
+	Version       string
+	Catalog       *config.ServiceCatalog
+	MatchService  func(string, string, uint16) filter.Match
+	Snapshot      func() config.State
+	Update        contract.Update
+	Status        func() any
+	Poll          func() error
+	Refresh       func(string) error
+	Preview       func(contract.Input) (contract.Selection, contract.Result)
+	Select        func(netip.Addr, time.Time) contract.Selection
+	Lookup        func(string, uint16) contract.LocalResult
+	Published     func(string) bool
+	LocalIssues   func() any
+	TestUpstream  func(context.Context, string) (any, error)
+	Revision      func() uint64
+	Ready         func() bool
+	Blocking      func(time.Time) contract.BlockingPause
+	SetBlocking   func(context.Context, string, contract.BlockingPause) error
 }
 
 type server struct {
@@ -94,6 +96,9 @@ type navItem struct{ Label, URL string }
 func New(authentication *auth.Manager, history *querylog.Log, hooks Hooks) http.Handler {
 	s := &server{auth: authentication, history: history, hooks: hooks}
 	mux := http.NewServeMux()
+	if hooks.ManagementAPI && authentication != nil && authentication.OIDCEnabled() {
+		s.registerManagement(mux)
+	}
 
 	for _, path := range []string{"/livez", "/healthz", "/readyz"} {
 		mux.HandleFunc("GET "+path, s.health)

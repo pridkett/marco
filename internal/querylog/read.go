@@ -12,13 +12,13 @@ import (
 )
 
 type Counts struct {
-	Queries uint64
-	Local   uint64
-	Cache   uint64
-	Misses  uint64
-	Blocks  uint64
-	Errors  uint64
-	Latency time.Duration
+	Queries uint64        `json:"queries"`
+	Local   uint64        `json:"local"`
+	Cache   uint64        `json:"cacheHits"`
+	Misses  uint64        `json:"cacheMisses"`
+	Blocks  uint64        `json:"blocks"`
+	Errors  uint64        `json:"errors"`
+	Latency time.Duration `json:"latencyNanoseconds"`
 }
 
 type counters struct {
@@ -130,6 +130,7 @@ type Filter struct {
 	Client   string // One or more comma-separated IPs or client IDs.
 	Question string
 	Outcome  string
+	Type     uint16 // Zero matches any query type.
 	After    time.Time
 	Until    time.Time
 	BeforeID int64
@@ -137,18 +138,18 @@ type Filter struct {
 }
 
 type Entry struct {
-	ID      int64
-	Time    time.Time
-	Node    string
-	Client  string
-	Name    string
-	Type    uint16
-	RCode   int
-	Origin  string
-	Reason  string
-	Rule    string
-	Cache   string
-	Latency time.Duration
+	ID      int64         `json:"id"`
+	Time    time.Time     `json:"time"`
+	Node    string        `json:"node"`
+	Client  string        `json:"client"`
+	Name    string        `json:"name"`
+	Type    uint16        `json:"type"`
+	RCode   int           `json:"rcode"`
+	Origin  string        `json:"origin"`
+	Reason  string        `json:"reason,omitempty"`
+	Rule    string        `json:"rule,omitempty"`
+	Cache   string        `json:"cache,omitempty"`
+	Latency time.Duration `json:"latencyNanoseconds"`
 }
 
 func (e Entry) TypeLabel() string {
@@ -195,6 +196,10 @@ func (l *Log) Search(ctx context.Context, f Filter) (Page, error) {
 	if f.Question != "" {
 		clauses = append(clauses, "instr(name, ?) > 0")
 		args = append(args, strings.ToLower(f.Question))
+	}
+	if f.Type != 0 {
+		clauses = append(clauses, "type = ?")
+		args = append(args, f.Type)
 	}
 	switch outcome := strings.ToLower(strings.TrimSpace(f.Outcome)); outcome {
 	case "":

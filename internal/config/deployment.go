@@ -92,6 +92,7 @@ func (s UpstreamSettings) Resolver() *net.Resolver {
 }
 
 type AdminSettings struct {
+	ManagementAPI  bool           `json:"managementAPI,omitempty"`
 	Listen         string         `json:"listen"`
 	PublicURL      string         `json:"publicURL"`
 	TrustedProxies []netip.Prefix `json:"trustedProxies"`
@@ -276,6 +277,9 @@ func (d Deployment) Validate() error {
 	}
 	if d.Upstream.MaxConnections < 1 || d.Upstream.MaxConnections > 512 || d.Upstream.CacheEntries < 0 || d.Upstream.CacheEntries > 100000 {
 		return errors.New("upstream.maxConnections must be 1–512 and upstream.cacheEntries must be 0–100000")
+	}
+	if d.Admin.ManagementAPI && (d.Admin.Listen == "" || d.Admin.Issuer == "") {
+		return errors.New("admin.managementAPI requires an admin listener and OIDC")
 	}
 	if d.Admin.Listen != "" {
 		host, err := splitListen(d.Admin.Listen)
