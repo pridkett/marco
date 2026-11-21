@@ -100,13 +100,17 @@ type historyData struct {
 }
 
 func (s *server) managementHistory(ctx context.Context, _ auth.AccessToken, in historyInput) (historyData, *managementError) {
-	if in.Limit < 0 || in.Limit > 200 || in.Before < 0 || len(in.Client) > 4096 || strings.Count(in.Client, ",") >= 64 ||
+	limit, problem := s.managementPageSize(in.Limit)
+	if problem != nil {
+		return historyData{}, problem
+	}
+	if in.Before < 0 || len(in.Client) > 4096 || strings.Count(in.Client, ",") >= 64 ||
 		len(in.Question) > 253 || len(in.Outcome) > 64 || (!in.After.IsZero() && !in.Until.IsZero() && !in.After.Before(in.Until)) {
 		return historyData{}, badInput("Check the history filters, time range, cursor, and limit.")
 	}
 	filter := querylog.Filter{
 		Client: strings.TrimSpace(in.Client), Question: in.Question, Outcome: in.Outcome,
-		After: in.After, Until: in.Until, BeforeID: in.Before, Limit: in.Limit,
+		After: in.After, Until: in.Until, BeforeID: in.Before, Limit: limit,
 	}
 	if value := strings.TrimSpace(in.Type); value != "" {
 		qtype, ok := historyQuestionType(value)
@@ -319,13 +323,14 @@ func (s *server) managementDevices(_ context.Context, _ auth.AccessToken, in dev
 	if s.hooks.Snapshot == nil {
 		return devicesData{}, unavailable("Client inventory is unavailable.")
 	}
-	if in.Limit < 0 || in.Limit > 200 || len(in.Search) > 256 || len(in.ID) > 256 || len(in.After) > 256 ||
+	limit, problem := s.managementPageSize(in.Limit)
+	if problem != nil {
+		return devicesData{}, problem
+	}
+	if len(in.Search) > 256 || len(in.ID) > 256 || len(in.After) > 256 ||
 		len(in.Controller) > 256 || len(in.Site) > 256 ||
 		!slices.Contains([]string{"", "connected", "absent", "manual", "legacy"}, in.Presence) {
 		return devicesData{}, badInput("Check the client filters, cursor, and limit.")
-	}
-	if in.Limit == 0 {
-		in.Limit = 50
 	}
 	state := s.hooks.Snapshot()
 	result := devicesData{Revision: state.Revision, SitePolls: state.SitePolls, Devices: []clientData{}}
@@ -365,7 +370,7 @@ func (s *server) managementDevices(_ context.Context, _ auth.AccessToken, in dev
 			!slices.ContainsFunc(cfg.Pinned, func(ip netip.Addr) bool { return strings.Contains(ip.String(), search) }) {
 			continue
 		}
-		if len(result.Devices) == in.Limit {
+		if len(result.Devices) == limit {
 			result.Next = result.Devices[len(result.Devices)-1].ID
 			break
 		}

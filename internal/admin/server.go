@@ -58,6 +58,8 @@ var views = template.Must(template.New("").Funcs(template.FuncMap{
 }).ParseFS(assets, "assets/*.html"))
 
 type Hooks struct {
+	ManagementMaxPageSize int
+
 	ManagementAPI bool
 	Version       string
 	Catalog       *config.ServiceCatalog

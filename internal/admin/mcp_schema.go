@@ -1,6 +1,9 @@
 package admin
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"fmt"
+)
 
 func objectSchema(definition string) json.RawMessage {
 	base := `{"type":"object","additionalProperties":false`
@@ -10,20 +13,23 @@ func objectSchema(definition string) json.RawMessage {
 	return json.RawMessage(base + "}")
 }
 
+func pagedSchema(properties string, defaultPage, maxPage int) json.RawMessage {
+	return objectSchema(fmt.Sprintf(`"properties":{%s,"limit":{"type":"integer","minimum":1,"maximum":%d,"default":%d}}`,
+		properties, maxPage, defaultPage))
+}
+
 const dashboardSchema = `"properties":{
 	"range":{"type":"string","enum":["15m","1h","24h"],"default":"24h"}
 }`
 
-const historySchema = `"properties":{
+const historyProperties = `
 	"client":{"type":"string","description":"One or more comma-separated IPs or anonymized client IDs."},
 	"question":{"type":"string","description":"Case-insensitive substring of the DNS name."},
 	"outcome":{"type":"string","description":"Outcome such as blocked, allowed, cache hit, local dns, or NXDOMAIN."},
 	"type":{"type":"string","description":"DNS question type, such as A, AAAA, or TYPE65."},
 	"after":{"type":"string","format":"date-time","description":"Inclusive RFC 3339 lower time bound."},
 	"until":{"type":"string","format":"date-time","description":"Exclusive RFC 3339 upper time bound."},
-	"before":{"type":"integer","minimum":0,"description":"Use the next cursor from a previous response."},
-	"limit":{"type":"integer","minimum":1,"maximum":200,"default":50}
-}`
+	"before":{"type":"integer","minimum":0,"description":"Use the next cursor from a previous response."}`
 
 const previewSchema = `"required":["client","question"],"properties":{
 	"client":{"type":"string","description":"IPv4 or IPv6 address whose policy to evaluate."},
@@ -31,15 +37,13 @@ const previewSchema = `"required":["client","question"],"properties":{
 	"type":{"type":"string","default":"A","description":"DNS type such as A, AAAA, PTR, or HTTPS."}
 }`
 
-const devicesSchema = `"properties":{
+const devicesProperties = `
 	"id":{"type":"string","description":"Look up an exact device ID."},
 	"search":{"type":"string","description":"Substring of a name, device ID, MAC, address, network or group."},
 	"controller":{"type":"string","description":"Exact controller ID."},
 	"site":{"type":"string","description":"Exact site ID."},
 	"presence":{"type":"string","enum":["connected","absent","manual","legacy"]},
-	"after":{"type":"string","description":"Use the next cursor from a previous response."},
-	"limit":{"type":"integer","minimum":1,"maximum":200,"default":50}
-}`
+	"after":{"type":"string","description":"Use the next cursor from a previous response."}`
 
 const policyPatchSchema = `"required":["revision"],"properties":{
 	"revision":{"type":"integer","minimum":1,"description":"Current revision returned by get_policies."},

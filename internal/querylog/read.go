@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/miekg/dns"
+	"github.com/pridkett/marco/internal/config"
 	"github.com/pridkett/marco/internal/contract"
 )
 
@@ -134,7 +135,7 @@ type Filter struct {
 	After    time.Time
 	Until    time.Time
 	BeforeID int64
-	Limit    int
+	Limit    int // Callers bound the page size. Zero uses 50 entries.
 }
 
 type Entry struct {
@@ -230,7 +231,7 @@ func (l *Log) Search(ctx context.Context, f Filter) (Page, error) {
 		clauses = append(clauses, "id < ?")
 		args = append(args, f.BeforeID)
 	}
-	if f.Limit <= 0 || f.Limit > 200 {
+	if f.Limit <= 0 || f.Limit > config.MaxManagementPageSize {
 		f.Limit = 50
 	}
 	args = append(args, f.Limit+1)
