@@ -39,9 +39,11 @@ type page struct {
 	DevicePollURL              string
 	DeviceHistoryURL           string
 	DeviceID, DeviceGroup      string
+	DeviceServiceFilterURL     string
 	NewDevice                  bool
 	Subscriptions              []sourceRow
 	Services                   servicePage
+	ServiceFilter              serviceFilterPage
 	AliasStatus                map[string]string
 	EditText, PoolText         string
 	History                    []queryDay
@@ -137,6 +139,7 @@ func (s *server) page(w http.ResponseWriter, r *http.Request, session auth.Sessi
 		if p.NewDevice {
 			p.Title = "Add manual device"
 		} else if observed || configured {
+			p.DeviceServiceFilterURL = serviceFilterURL("device:" + p.DeviceID)
 			p.stats(s.history)
 			if p.Stats.Enabled {
 				p.DeviceHistoryURL = s.deviceHistoryURL(device, settings)
@@ -160,6 +163,9 @@ func (s *server) page(w http.ResponseWriter, r *http.Request, session auth.Sessi
 		p.EditText = pretty(policyConfig(state.Desired))
 	case "/services":
 		status = s.servicePage(&p, r, state.Desired)
+	case "/services/filter":
+		p.Title = "Filter services"
+		status = s.serviceFilterPage(&p, r, state, status)
 	case "/blocklists":
 		p.Subscriptions = sourceRows(state)
 		p.EditText = prettyObject(state.Desired.Subscriptions)

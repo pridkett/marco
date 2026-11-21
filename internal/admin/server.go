@@ -40,12 +40,13 @@ var adminCSSVersion = func() string {
 }()
 
 var views = template.Must(template.New("").Funcs(template.FuncMap{
-	"stylesheet": func() string { return adminCSSPath + "?v=" + adminCSSVersion },
-	"when":       dateTime,
-	"age":        age,
-	"pretty":     pretty,
-	"queryBadge": queryBadge,
-	"count":      formatCount,
+	"stylesheet":       func() string { return adminCSSPath + "?v=" + adminCSSVersion },
+	"when":             dateTime,
+	"age":              age,
+	"pretty":           pretty,
+	"queryBadge":       queryBadge,
+	"count":            formatCount,
+	"serviceFilterURL": serviceFilterURL,
 	"label": func(value any) string {
 		s := fmt.Sprint(value)
 		if s == "" {
@@ -103,10 +104,12 @@ func New(authentication *auth.Manager, history *querylog.Log, hooks Hooks) http.
 		}
 		http.ServeFileFS(w, r, assets, adminCSSFile)
 	}))
-	mux.HandleFunc("GET /assets/dashboard.js", s.secure(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
-		http.ServeFileFS(w, r, assets, "assets/dashboard.js")
-	}))
+	for _, file := range []string{"assets/dashboard.js", "assets/service-filter.js"} {
+		mux.HandleFunc("GET /"+file, s.secure(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
+			http.ServeFileFS(w, r, assets, file)
+		}))
+	}
 	mux.HandleFunc("GET /blocking", s.protected(s.blockingStatus))
 	mux.HandleFunc("POST /blocking", s.protected(s.updateBlocking))
 	mux.HandleFunc("GET /login", s.secure(func(w http.ResponseWriter, r *http.Request) {
@@ -139,11 +142,16 @@ func New(authentication *auth.Manager, history *querylog.Log, hooks Hooks) http.
 	}))
 	mux.HandleFunc("GET /settings/export", s.protected(s.export))
 	mux.HandleFunc("GET /services/icons/{id}", s.protected(s.serviceIcon))
+	mux.HandleFunc("GET /services/filter", s.protected(func(w http.ResponseWriter, r *http.Request, session auth.Session) {
+		s.page(w, r, session, "/services/filter", http.StatusOK, feedback{})
+	}))
 	for _, edit := range []struct{ path, page, operation string }{
 		{"/devices/edit", "/devices/edit", "edit-device"},
 		{"/local-dns", "/local-dns", "edit-local-dns"},
 		{"/policies", "/policies", "edit-policies"},
 		{"/policies/defaults", "/policies", "add-default-groups"},
+		{"/policies/groups", "/policies", "create-group"},
+		{"/services/filter", "/services/filter", "edit-service-filter"},
 		{"/blocklists", "/blocklists", "edit-blocklists"},
 		{"/blocklists/defaults", "/blocklists", "add-default-lists"},
 		{"/blocklists/toggle", "/blocklists", "toggle-list"},
@@ -194,6 +202,9 @@ func (s *server) secure(next http.HandlerFunc) http.HandlerFunc {
 		csp := "default-src 'none'; style-src 'self'; img-src " + imageSources + "; base-uri 'none'; frame-ancestors 'none'; form-action 'self' https:"
 		if r.URL.Path == "/" || r.URL.Path == "/blocking" {
 			csp += "; script-src 'self'; connect-src 'self'"
+		}
+		if r.URL.Path == "/services/filter" {
+			csp += "; script-src 'self'"
 		}
 		w.Header().Set("Content-Security-Policy", csp)
 		if s.auth == nil {

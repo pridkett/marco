@@ -16,6 +16,7 @@ group in the ID token’s `groups` claim.
 | `/local-dns` | Zones, aliases, records, reverse ranges and exclusions |
 | `/policies` | Default policies, groups, address assignments, service groups and dry-run decisions |
 | `/services` | Service categories, hostname rule details, and per-service matching tests |
+| `/services/filter` | Edit inherited or custom service blocks for a group or device |
 | `/blocklists` | Subscription settings, artifact health, enable or disable, manual refresh and dry-run decisions |
 | `/query-log` | Query history filtered by client, name, outcome and UTC time |
 | `/settings` | Upstream pools, endpoint tests, portable configuration and instance status |
@@ -41,6 +42,8 @@ DNS view before publication.
 | `/devices/poll` | No fields beyond `csrf` |
 | `/local-dns` | `settings` with `zones`, `reverse`, `records`, `suppressions`, `dynamicTTL`, `staticTTL`, `autoRename`, and `multiplePTRs` |
 | `/policies` | `settings` with `default`, `groups`, `assignments`, and `services` |
+| `/policies/groups` | `group-name` for a new group that inherits the default policy |
+| `/services/filter` | `target` as `group:<name>` or `device:<id>`, `mode` as `inherit` or `custom`, and repeated `service` IDs for the custom selection |
 | `/blocklists` | `settings` as the named subscriptions object |
 | `/blocklists/toggle` | `id` and boolean `enabled` |
 | `/blocklists/refresh` | `id` |
