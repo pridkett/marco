@@ -329,6 +329,7 @@
   <form action="/query-log" method="get" class="toolbar">
     <label>Client <input name="client" placeholder="IPs or client IDs" value="{{.HistoryClient}}"></label>
     <label>Question <input name="question" type="search" value="{{.HistoryName}}"></label>
+    <label>Type <input name="type" class="short" placeholder="A, AAAA, …" value="{{.HistoryType}}"></label>
     <label>Outcome <input name="outcome" placeholder="Blocked, NXDOMAIN, …" value="{{.HistoryOutcome}}"></label>
     <label>From (UTC) <input name="after" type="datetime-local" value="{{.HistoryAfter}}"></label>
     <label>Until (UTC) <input name="until" type="datetime-local" value="{{.HistoryUntil}}"></label>
@@ -336,13 +337,13 @@
   </form>
   <p class="mobile-table-note muted" id="history-scroll-help">Scroll the table to see more columns.</p>
   <div class="panel table-box" role="region" aria-label="Query Log" aria-describedby="history-scroll-help" tabindex="0">
-    <table class="history-table">
+    <table class="history-table" data-query-results>
       <thead><tr><th scope="col" class="query-time">Time (UTC)</th><th scope="col" class="query-client">Client</th><th scope="col">Question</th><th scope="col" class="query-type">Type</th><th scope="col" class="query-status">Outcome</th><th scope="col" class="query-latency">Latency</th></tr></thead>
-      {{range .History}}<tbody>
+      {{range .History}}<tbody data-query-date="{{.Date}}">
         <tr><th scope="rowgroup" colspan="6" class="query-date"><time datetime="{{.Date}}">{{.Date}}</time></th></tr>
         {{range .Rows}}
         {{$badge := queryBadge .Entry}}
-        <tr>
+        <tr data-query-row>
           <td class="time"><time datetime="{{.Time.UTC.Format "2006-01-02T15:04:05Z"}}">{{.Time.UTC.Format "15:04:05"}}</time></td>
           <td>{{if .Hostname}}<span class="query-host" title="{{.Hostname}}">{{.Hostname}}</span><small class="secondary muted">{{.Client}}</small>{{else}}{{label .Client}}{{end}}</td>
           <th scope="row" aria-labelledby="query-name-{{.ID}}">
@@ -367,8 +368,10 @@
   </div>
   <nav class="toolbar" aria-label="Query history pagination">
     {{with .HistoryFirst}}<a class="button" href="{{.}}">First page</a>{{end}}
-    {{with .HistoryMore}}<a class="button" href="{{.}}">Older queries</a>{{end}}
+    {{with .HistoryMore}}<a class="button" href="{{.}}" data-query-more>Older queries</a>{{end}}
+    <span class="muted" role="status" tabindex="-1" data-query-status></span>
   </nav>
+  <script src="/assets/query-log.js" defer></script>
 {{else}}
   <section class="panel section"><p>Query history is disabled. Aggregate counts remain available on the <a href="/">Dashboard</a>.</p></section>
 {{end}}
