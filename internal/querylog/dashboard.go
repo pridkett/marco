@@ -8,7 +8,7 @@ import (
 )
 
 type ActivityPoint struct {
-	Time time.Time
+	Time time.Time `json:"time"`
 	Counts
 }
 
@@ -76,12 +76,14 @@ func (l *Log) Activity(now time.Time, window, interval time.Duration) ([]Activit
 }
 
 type RankedEntry struct {
-	Value string
-	Count uint64
+	Value string `json:"value"`
+	Count uint64 `json:"count"`
 }
 
 type Rankings struct {
-	Clients, Domains, Blocked []RankedEntry
+	Clients []RankedEntry `json:"clients"`
+	Domains []RankedEntry `json:"domains"`
+	Blocked []RankedEntry `json:"blocked"`
 }
 
 // TopQueries ranks retained history. Client keys have already passed through the

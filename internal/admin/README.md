@@ -25,6 +25,9 @@ Pages and actions require an administrator session. The sign-in page is at
 `/login`. For unauthenticated health checks, `/livez` reports process liveness
 and `/readyz` reports overall DNS listener readiness.
 
+An OIDC-enabled deployment can opt into the management endpoints on the same
+listener. [Management MCP and REST routes](../../docs/operations.md#management-mcp-and-rest-api)
+
 ## Forms and settings
 
 Update actions read URL-encoded forms and use the `csrf` value embedded in

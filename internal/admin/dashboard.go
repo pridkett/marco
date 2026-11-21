@@ -16,15 +16,16 @@ import (
 )
 
 type activityRange struct {
+	Key      string
 	Label    string
 	Window   time.Duration
 	Interval time.Duration
 }
 
 var activityRanges = []activityRange{
-	{"15 minutes", 15 * time.Minute, time.Minute},
-	{"1 hour", time.Hour, 5 * time.Minute},
-	{"24 hours", 24 * time.Hour, time.Hour},
+	{"15m", "15 minutes", 15 * time.Minute, time.Minute},
+	{"1h", "1 hour", time.Hour, 5 * time.Minute},
+	{"24h", "24 hours", 24 * time.Hour, time.Hour},
 }
 
 type pauseOption struct {

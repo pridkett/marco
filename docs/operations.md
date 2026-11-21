@@ -24,6 +24,36 @@ Marco grants the same console access as the local administrator when the signed 
 
 You can keep the local password account for recovery during provider outages. For OIDC-only sign-in, remove the local password reference and leave `MARCO_ADMIN_PASSWORD` unset. The client secret reference also accepts a mounted file such as `{"file":"/run/secrets/marco-oidc"}`.
 
+### Management MCP and REST API
+
+Set `"managementAPI": true` in the `admin` object and restart Marco. The management endpoints require the admin HTTPS listener and a configured OIDC issuer. Use the exact HTTPS URL ending in `/api/v1/mcp` as both the Streamable HTTP server URL and the OAuth resource. For example, use `https://marco.example.net/api/v1/mcp` when `admin.publicURL` is `https://marco.example.net`. Forward `/api/v1/*` and `/.well-known/oauth-protected-resource/api/v1/mcp` through the HTTPS reverse proxy, preserving the `Authorization` and MCP headers. Clients discover the configured issuer from Marco's protected resource metadata.
+
+At the issuer, register the resource as an API and create the permissions `marco:read` and `marco:policies:write`. Grant `marco:read` to connector clients and users who should have access to network analytics and inventory. Grant both permissions when the connector should edit policies. For an interactive connector, use its registered callback URL and authorization code flow with PKCE. With Pocket ID, use a preregistered client or a Client ID Metadata Document with the corresponding API grants. [Pocket ID APIs and permissions](https://pocket-id.org/docs/guides/apis)
+
+The issuer must return a signed JWT access token with type `at+jwt`, the exact resource URL in its `aud` claim, and the granted permissions in `scope`. The API checks those permissions independently of the console's OIDC group. REST uses the same resource and sends `Authorization: Bearer <access-token>`. Requests without valid credentials receive HTTP 401 with a discovery challenge. Insufficient permissions return HTTP 403 with the scopes required by the operation. MCP supports Streamable HTTP with JSON responses, using `server/discover` in `2026-07-28` or the `initialize` handshake for `2025-11-25`, `2025-06-18`, and `2025-03-26` clients. [MCP authorization](https://modelcontextprotocol.io/specification/2025-11-25/basic/authorization)
+
+| MCP tool | REST route | Arguments and result |
+| --- | --- | --- |
+| `get_dashboard` | `GET /api/v1/dashboard` | `range` accepts `15m`, `1h`, or `24h` (default). Returns counts, activity buckets, average latency, cache hit rate, blocking status, and the top five clients, queried domains, and blocked domains. |
+| `search_query_log` | `GET /api/v1/query-log` | Filter by `client` (comma-separated IPs or anonymized IDs), `question` (substring), `type` (for example `AAAA`), `outcome`, `after` (inclusive), or `until` (exclusive). Times use RFC 3339. Pass `next` as `before` with the same filters to read older entries. |
+| `test_policy` | `POST /api/v1/policies/test` | Send `client` IP, `question` as a DNS name or an HTTP(S) URL, and optional `type` (default `A`). Returns the selected policy and predicted result. An external-eligible result means a live DNS request would proceed to an upstream. |
+| `get_policies` | `GET /api/v1/policies` | Returns current settings, their revision, and valid pool, subscription, and built-in service IDs. |
+| `update_policies` | `PATCH /api/v1/policies` | Takes the current `revision` and any of `default`, `groups`, `assignments`, or `services`. Requires both permissions. |
+| `list_clients` | `GET /api/v1/devices` | Filter by exact `id`, `controller`, `site`, or `presence` (`connected`, `absent`, `manual`, or `legacy`), or use a `search` substring. Returns observed addresses, configured group and policy, publication status, and site poll timestamps. Pass `next` as `after` to continue. |
+
+The two list operations return 50 entries by default and support `limit` up to 200. Query history and rankings use retained rows and respect history anonymization. Dashboard counts also include queries whose history entries were dropped. Inventory can contain IP and MAC addresses and is governed by the API's read permission.
+
+Send JSON bodies with `Content-Type: application/json`. Policy edits replace the `default` policy or full `assignments` array when supplied. An empty `assignments` array clears it. `groups` and `services` replace only the specified keys and accept `null` for removing an entry. Omit `services` or `subscriptions` within a replacement policy to inherit that selection, or use an empty array to clear it. This example creates a local-only group at revision 42.
+
+```json
+{
+  "revision": 42,
+  "groups": {"IoT": {"mode": "local-only"}}
+}
+```
+
+The response gives the applied revision. REST returns HTTP 409 on a stale revision and 422 when the candidate fails validation. MCP reports those failures in the tool result. Fetch the current settings before retrying a conflict. Marco saves policy changes and their audit record together with the issuer and subject from the token.
+
 ### Wildcard HTTPS certificate
 
 Choose a hostname covered by the certificate, such as `marco.wagstrom.net` for a DNS-validated `*.wagstrom.net` certificate. Point that name at the admin listener using a DNS A or AAAA record. For direct HTTPS, merge these fields into the startup config’s `admin` object alongside its sign-in settings.

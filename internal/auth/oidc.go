@@ -16,9 +16,10 @@ import (
 const CallbackPath = "/auth/callback"
 
 type provider struct {
-	oauth    oauth2.Config
-	verifier *oidc.IDTokenVerifier
-	userInfo func(context.Context, oauth2.TokenSource) (*oidc.UserInfo, error)
+	oauth          oauth2.Config
+	verifier       *oidc.IDTokenVerifier
+	accessVerifier *oidc.IDTokenVerifier
+	userInfo       func(context.Context, oauth2.TokenSource) (*oidc.UserInfo, error)
 }
 
 var defaultOIDCClient = &http.Client{
@@ -57,6 +58,7 @@ func (m *Manager) provider(ctx context.Context) (*provider, error) {
 	if _, err := parseHTTPS(settings.JWKS); err != nil {
 		return nil, err
 	}
+	verifyContext := oidc.ClientContext(context.Background(), m.oidcClient)
 	result := &provider{
 		oauth: oauth2.Config{
 			ClientID:     m.cfg.ClientID,
@@ -65,8 +67,12 @@ func (m *Manager) provider(ctx context.Context) (*provider, error) {
 			Endpoint:     endpoint,
 			Scopes:       []string{oidc.ScopeOpenID, "groups", "email"},
 		},
-		verifier: p.VerifierContext(oidc.ClientContext(context.Background(), m.oidcClient), &oidc.Config{
+		verifier: p.VerifierContext(verifyContext, &oidc.Config{
 			ClientID: m.cfg.ClientID,
+		}),
+		accessVerifier: p.VerifierContext(verifyContext, &oidc.Config{
+			SkipClientIDCheck:    true, // The access-token verifier checks the resource audience.
+			SupportedSigningAlgs: accessSigningAlgorithms,
 		}),
 	}
 	if _, err := parseHTTPS(p.UserInfoEndpoint()); err == nil {

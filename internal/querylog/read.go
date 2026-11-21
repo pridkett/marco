@@ -12,13 +12,13 @@ import (
 )
 
 type Counts struct {
-	Queries uint64
-	Local   uint64
-	Cache   uint64
-	Misses  uint64
-	Blocks  uint64
-	Errors  uint64
-	Latency time.Duration
+	Queries uint64        `json:"queries"`
+	Local   uint64        `json:"local"`
+	Cache   uint64        `json:"cacheHits"`
+	Misses  uint64        `json:"cacheMisses"`
+	Blocks  uint64        `json:"blocks"`
+	Errors  uint64        `json:"errors"`
+	Latency time.Duration `json:"latencyNanoseconds"`
 }
 
 type counters struct {
@@ -138,18 +138,18 @@ type Filter struct {
 }
 
 type Entry struct {
-	ID      int64
-	Time    time.Time
-	Node    string
-	Client  string
-	Name    string
-	Type    uint16
-	RCode   int
-	Origin  string
-	Reason  string
-	Rule    string
-	Cache   string
-	Latency time.Duration
+	ID      int64         `json:"id"`
+	Time    time.Time     `json:"time"`
+	Node    string        `json:"node"`
+	Client  string        `json:"client"`
+	Name    string        `json:"name"`
+	Type    uint16        `json:"type"`
+	RCode   int           `json:"rcode"`
+	Origin  string        `json:"origin"`
+	Reason  string        `json:"reason,omitempty"`
+	Rule    string        `json:"rule,omitempty"`
+	Cache   string        `json:"cache,omitempty"`
+	Latency time.Duration `json:"latencyNanoseconds"`
 }
 
 func (e Entry) TypeLabel() string {

@@ -126,7 +126,10 @@ func serve(ctx context.Context, d config.Deployment) error {
 			authNote = err.Error()
 			slog.Warn("admin sign-in degraded", "error", err)
 		}
-		hooks := admin.Hooks{Catalog: d.Catalog, Snapshot: p.Snapshot, Update: p.Update, Ready: ready, Revision: p.Revision, Refresh: lists.Trigger}
+		hooks := admin.Hooks{
+			ManagementAPI: d.Admin.ManagementAPI, Version: version, Catalog: d.Catalog,
+			Snapshot: p.Snapshot, Update: p.Update, Ready: ready, Revision: p.Revision, Refresh: lists.Trigger,
+		}
 		hooks.Blocking, hooks.SetBlocking = blocking.Status, blocking.Set
 		hooks.MatchService = func(id, name string, qtype uint16) filter.Match {
 			return p.View().Policies.(*policy.Engine).ServiceMatch(id, name, qtype)
