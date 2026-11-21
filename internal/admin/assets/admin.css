@@ -227,6 +227,9 @@ tr:last-child > td, tr:last-child > th { border-bottom: 0; }
 .history-table th, .history-table td { padding: .38rem .65rem; }
 .history-table .empty { padding: 1.3rem; }
 .history-table .query-date { background: var(--faint); color: var(--muted); font-variant-numeric: tabular-nums; }
+.query-rows-clickable [data-query-row] { cursor: pointer; }
+.query-rows-clickable [data-query-row]:hover { background: var(--faint); }
+[data-query-more][hidden] { display: none; }
 .query-time, .query-latency { width: 6rem; }
 .query-client { width: clamp(9rem, 22vw, 16rem); }
 .query-type { width: 5rem; }
@@ -234,7 +237,9 @@ tr:last-child > td, tr:last-child > th { border-bottom: 0; }
 .history-table .query-latency { text-align: end; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .query-host, .query-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .query-host { display: block; }
-.query-name { display: inline-block; max-width: calc(100% - 1.25em); vertical-align: bottom; }
+.query-detail summary { display: block; list-style: none; }
+.query-detail summary::-webkit-details-marker { display: none; }
+.query-name { display: block; }
 .query-detail[open] .query-name { white-space: normal; }
 .query-detail dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: .25rem .6rem; margin: .5rem 0 0; font-size: .82rem; font-weight: 400; }
 .query-detail dt { color: var(--muted); }

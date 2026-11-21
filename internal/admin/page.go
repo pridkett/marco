@@ -49,6 +49,7 @@ type page struct {
 	EditBase, ImportBase       string
 	History                    []queryDay
 	HistoryClient, HistoryName string
+	HistoryType                string
 	HistoryOutcome             string
 	HistoryAfter, HistoryUntil string
 	HistoryMore                string
@@ -182,7 +183,7 @@ func (s *server) page(w http.ResponseWriter, r *http.Request, session auth.Sessi
 		}
 	case "/query-log":
 		p.stats(s.history)
-		s.queryHistory(&p, r, state, now)
+		status = s.queryHistory(&p, r, state, now)
 	case "/settings":
 		editOperation = "edit-upstreams"
 		p.ImportBase = scopedEditBase(state, "import-settings", "")
@@ -428,26 +429,36 @@ func queryBadge(entry querylog.Entry) outcomeBadge {
 	}
 }
 
-func (s *server) queryHistory(p *page, r *http.Request, state config.State, now time.Time) {
+func (s *server) queryHistory(p *page, r *http.Request, state config.State, now time.Time) int {
 	if s.history == nil || !p.Stats.Enabled {
-		return
+		return http.StatusOK
 	}
 	q := r.URL.Query()
 	p.HistoryClient, p.HistoryName, p.HistoryOutcome = q.Get("client"), q.Get("question"), q.Get("outcome")
+	p.HistoryType = strings.TrimSpace(q.Get("type"))
 	p.HistoryAfter, p.HistoryUntil = q.Get("after"), q.Get("until")
 	after, startErr := formTime(p.HistoryAfter)
 	until, endErr := formTime(p.HistoryUntil)
 	if startErr != nil || endErr != nil || (!after.IsZero() && !until.IsZero() && !after.Before(until)) {
 		p.Feedback.Error = "Enter a valid UTC time range."
-		return
+		return http.StatusBadRequest
 	}
 	before, _ := strconv.ParseInt(q.Get("before"), 10, 64)
-	history, err := s.history.Search(r.Context(), querylog.Filter{
+	filter := querylog.Filter{
 		Client: p.HistoryClient, Question: p.HistoryName, Outcome: p.HistoryOutcome, After: after, Until: until, BeforeID: before,
-	})
+	}
+	if p.HistoryType != "" {
+		qtype, ok := historyQuestionType(p.HistoryType)
+		if !ok {
+			p.Feedback.Error = "Enter a DNS type such as A, AAAA, HTTPS, or TYPE65400."
+			return http.StatusBadRequest
+		}
+		filter.Type = &qtype
+	}
+	history, err := s.history.Search(r.Context(), filter)
 	if err != nil {
 		p.Feedback.Error = "Query history is temporarily unavailable."
-		return
+		return http.StatusServiceUnavailable
 	}
 	hostnames := make(map[string]string)
 	for _, entry := range history.Entries {
@@ -465,6 +476,9 @@ func (s *server) queryHistory(p *page, r *http.Request, state config.State, now 
 	}
 	params := url.Values{"client": {p.HistoryClient}, "question": {p.HistoryName},
 		"outcome": {p.HistoryOutcome}, "after": {p.HistoryAfter}, "until": {p.HistoryUntil}}
+	if p.HistoryType != "" {
+		params.Set("type", p.HistoryType)
+	}
 	if before > 0 {
 		p.HistoryFirst = "/query-log?" + params.Encode()
 	}
@@ -472,6 +486,20 @@ func (s *server) queryHistory(p *page, r *http.Request, state config.State, now 
 		params.Set("before", strconv.FormatInt(history.Next, 10))
 		p.HistoryMore = "/query-log?" + params.Encode()
 	}
+	return http.StatusOK
+}
+
+func historyQuestionType(value string) (uint16, bool) {
+	for qtype, label := range dns.TypeToString {
+		if strings.EqualFold(value, label) {
+			return qtype, true
+		}
+	}
+	if digits, ok := strings.CutPrefix(strings.ToUpper(value), "TYPE"); ok {
+		qtype, err := strconv.ParseUint(digits, 10, 16)
+		return uint16(qtype), err == nil
+	}
+	return 0, false
 }
 
 func (s *server) queryClientName(client string, state config.State, now time.Time) string {

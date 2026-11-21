@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"html"
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
@@ -80,7 +81,7 @@ func setup(t *testing.T) *fixture {
 	return setupWithHooks(t, nil)
 }
 
-func setupWithHooks(t *testing.T, configure func(*Hooks)) *fixture {
+func setupWithHooks(t *testing.T, configure func(*Hooks), extraHistory ...contract.Event) *fixture {
 	t.Helper()
 	db, err := sql.Open("sqlite", filepath.Join(t.TempDir(), "admin.sqlite"))
 	if err != nil {
@@ -119,6 +120,9 @@ func setupWithHooks(t *testing.T, configure func(*Hooks)) *fixture {
 			Rule: "adguard-filters-1/@@||js.monitor.azure.com^|"},
 		Node: "fixture", Latency: 123 * time.Microsecond,
 	})
+	for _, event := range extraHistory {
+		history.Observe(event)
+	}
 	if err := history.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -454,7 +458,11 @@ func TestQueryHistorySummaryAndDetails(t *testing.T) {
 		`class="query-badge allowed">Allowed`, `class="query-badge blocked">Blocked`, `>HTTPS</td>`,
 		`>1.00 ms</td>`, `>123 µs</td>`, `<details class="query-detail">`,
 		`<dt>Allow rule</dt><dd>adguard-filters-1/@@||js.monitor.azure.com^|</dd>`, `<dt>Source</dt><dd>upstream</dd>`,
-		`<dt>DNS response</dt><dd>NOERROR</dd>`, `<dt>Cache</dt><dd>miss</dd>`)
+		`<dt>DNS response</dt><dd>NOERROR</dd>`, `<dt>Cache</dt><dd>miss</dd>`,
+		`<tr data-query-row>`, `<script src="/assets/query-log.js" defer></script>`)
+	if csp := response.Header().Get("Content-Security-Policy"); !strings.Contains(csp, "script-src 'self'") || !strings.Contains(csp, "connect-src 'self'") {
+		t.Fatalf("query log script and fetch are blocked by CSP: %q", csp)
+	}
 	body := response.Body.String()
 	if strings.Count(body, `scope="rowgroup"`) != 2 || strings.Contains(body, `>Node</th>`) || strings.Contains(body, ">fixture</td>") {
 		t.Fatal("expected separate UTC dates and no node column")
@@ -468,6 +476,65 @@ func TestQueryHistorySummaryAndDetails(t *testing.T) {
 		if strings.Contains(filtered.Body.String(), tc.excluded) {
 			t.Errorf("%s filter included %s", tc.outcome, tc.excluded)
 		}
+	}
+}
+
+func TestQueryHistoryTypeFilterAndPagination(t *testing.T) {
+	now := time.Now()
+	newEvent := func(name string, qtype uint16) contract.Event {
+		return contract.Event{
+			Input:  contract.Input{Time: now, Name: name, Type: qtype, Peer: netip.MustParseAddr("192.0.2.10")},
+			Result: contract.Result{Origin: "upstream", RCode: dns.RcodeSuccess},
+		}
+	}
+	var entries []contract.Event
+	for i := range 51 {
+		entries = append(entries, newEvent(fmt.Sprintf("paged-%02d.test.", i), dns.TypeA))
+	}
+	entries = append(entries, newEvent("paged-v6.test.", dns.TypeAAAA), newEvent("paged-private.test.", 65400))
+	f := setupWithHooks(t, nil, entries...)
+	f.login(t)
+
+	filters := url.Values{"client": {"192.0.2.10"}, "question": {"paged"}, "outcome": {"upstream"}, "type": {"a"}}
+	first := request(f.handler, http.MethodGet, "/query-log?"+filters.Encode(), nil, f.cookie)
+	checkContent(t, first, `name="type" class="short" placeholder="A, AAAA, …" value="a"`, "paged-50.test.", "paged-01.test.")
+	body := first.Body.String()
+	if strings.Count(body, "<tr data-query-row>") != 50 || strings.Contains(body, "paged-00.test.") ||
+		strings.Contains(body, "paged-v6.test.") || strings.Contains(body, "paged-private.test.") {
+		t.Fatal("first page should contain the 50 newest A queries")
+	}
+	link := regexp.MustCompile(`href="([^"]+)" data-query-more`).FindStringSubmatch(body)
+	if len(link) != 2 {
+		t.Fatal("older queries link is missing")
+	}
+	next, err := url.Parse(html.UnescapeString(link[1]))
+	if err != nil {
+		t.Fatal(err)
+	}
+	params := next.Query()
+	if next.Path != "/query-log" || params.Get("before") == "" {
+		t.Fatalf("invalid older queries link: %s", next)
+	}
+	for key := range filters {
+		if params.Get(key) != filters.Get(key) {
+			t.Errorf("older queries link lost filter %q: %s", key, next)
+		}
+	}
+	last := request(f.handler, http.MethodGet, next.String(), nil, f.cookie)
+	checkContent(t, last, "paged-00.test.", ">First page</a>")
+	body = last.Body.String()
+	if strings.Count(body, "<tr data-query-row>") != 1 || strings.Contains(body, "data-query-more") {
+		t.Fatal("last page should contain one remaining A query and no older queries link")
+	}
+
+	private := request(f.handler, http.MethodGet, "/query-log?type=type65400", nil, f.cookie)
+	checkContent(t, private, "paged-private.test.", ">TYPE65400</td>")
+	if strings.Count(private.Body.String(), "<tr data-query-row>") != 1 {
+		t.Fatal("private-use type filter matched another type")
+	}
+	invalid := request(f.handler, http.MethodGet, "/query-log?type=TYPE65536", nil, f.cookie)
+	if invalid.Code != http.StatusBadRequest || !strings.Contains(invalid.Body.String(), "Enter a DNS type") {
+		t.Fatal("out-of-range type did not produce a filter error")
 	}
 }
 
