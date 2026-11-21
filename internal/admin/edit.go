@@ -59,6 +59,7 @@ type feedback struct {
 	Answer         *probeAnswer
 	Upstream       any
 	Endpoints      string
+	Forwarding     string
 	SettingsImport string
 	StaleBase      *uint64
 	ServiceEdit    *serviceFilterEdit
@@ -92,6 +93,7 @@ func (s *server) edit(w http.ResponseWriter, r *http.Request, session auth.Sessi
 	}
 	if operation == "edit-upstreams" {
 		draft.Endpoints, draft.Draft = draft.Draft, ""
+		draft.Forwarding = form.Get("forwarding")
 	}
 	if operation == "import-settings" {
 		draft.SettingsImport, draft.Draft = draft.Draft, ""
@@ -320,7 +322,19 @@ func changeFor(operation string, get func(string) string) (func(*config.State) e
 		if err := decode(text, &pools); err != nil {
 			return nil, err
 		}
-		return func(s *config.State) error { s.Desired.Pools = pools; return nil }, nil
+		var forwarding map[string]string
+		if raw := get("forwarding"); raw != "" {
+			if err := decode(raw, &forwarding); err != nil {
+				return nil, err
+			}
+		}
+		return func(s *config.State) error {
+			s.Desired.Pools = pools
+			if forwarding != nil {
+				s.Desired.Forwarding = forwarding
+			}
+			return nil
+		}, nil
 	case "import-settings":
 		var cfg config.Desired
 		if err := decode(text, &cfg); err != nil {

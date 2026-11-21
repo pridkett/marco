@@ -50,7 +50,10 @@ func scopedEditBase(state config.State, operation, target string) string {
 		}
 		value = spec
 	case "edit-upstreams":
-		value = d.Pools
+		value = struct {
+			Pools      map[string][]config.Endpoint
+			Forwarding map[string]string
+		}{d.Pools, d.Forwarding}
 	case "import-settings":
 		value = d
 	case "edit-service-filter":

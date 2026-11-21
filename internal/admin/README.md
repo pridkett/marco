@@ -19,7 +19,7 @@ group in the ID token’s `groups` claim.
 | `/services/filter` | Edit inherited or custom service blocks for a group or device |
 | `/blocklists` | Subscription settings, artifact health, enable or disable, manual refresh and dry-run decisions |
 | `/query-log` | Query history filtered by client, name, DNS type, outcome and UTC time |
-| `/settings` | Upstream pools, endpoint tests, portable configuration and instance status |
+| `/settings` | Upstream pools, conditional forwarding, endpoint tests, portable configuration and instance status |
 
 Pages and actions require an administrator session. The sign-in page is at
 `/login`. For unauthenticated health checks, `/livez` reports process liveness
@@ -57,7 +57,7 @@ JSON editors validate the object and affected DNS view before publication.
 | `/blocklists/toggle` | `id` and boolean `enabled` |
 | `/blocklists/refresh` | `id` |
 | `/policies/test` and `/blocklists/test` | `client` IP, `question` and DNS `type` |
-| `/settings/upstreams` | `settings` as the named upstream pools object |
+| `/settings/upstreams` | `settings` as the named upstream pools object and optional `forwarding` as a DNS suffix-to-pool object |
 | `/settings/test-upstream` | `pool` |
 | `/settings/import` | `settings` as a complete portable settings document |
 

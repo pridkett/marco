@@ -285,7 +285,7 @@ func TestRoutesReadyAuthAndRenderedViews(t *testing.T) {
 		{"/policies", []string{"Client groups", "Test a DNS decision", "local-only"}},
 		{"/blocklists", []string{"fixture-digest", "Waiting for valid list", "Refresh fixture", "/blocklists/test"}},
 		{"/query-log?question=BLOCKED&outcome=NXDOMAIN", []string{"<h1>Query Log</h1>", "blocked.test.", `class="query-badge blocked">Blocked`, "NXDOMAIN", "subscription-block", "192.0.2.2"}},
-		{"/settings", []string{"Test encrypted endpoints", "Import and export", "Instance status"}},
+		{"/settings", []string{"Test endpoints", "Forwarding JSON", "Import and export", "Instance status"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.path, func(t *testing.T) {
@@ -674,7 +674,7 @@ func TestJSONEditorAssetsAndRejectedDraft(t *testing.T) {
 		{"/local-dns", 1},
 		{"/policies", 1},
 		{"/blocklists", 1},
-		{"/settings", 2},
+		{"/settings", 3},
 	} {
 		t.Run(tc.path, func(t *testing.T) {
 			page := request(f.handler, "GET", tc.path, nil, f.cookie)
@@ -745,6 +745,38 @@ func TestRevisionConflictsCSRFSettingsAndAudit(t *testing.T) {
 	logout := post("/logout", url.Values{})
 	if logout.Code != http.StatusSeeOther || request(f.handler, "GET", "/devices", nil, f.cookie).Code != http.StatusSeeOther {
 		t.Fatal("logout did not revoke the session")
+	}
+}
+
+func TestUpstreamAndForwardingSettings(t *testing.T) {
+	f := setup(t)
+	f.login(t)
+	const pools = `{"private":[{"transport":"udp","address":"192.0.2.53"}]}`
+	const routes = `{"private.test":"private"}`
+	post := func(base, forwarding string) *httptest.ResponseRecorder {
+		form := url.Values{
+			"csrf": {f.csrf}, "revision": {fmt.Sprint(f.state.Revision)}, "edit-base": {base}, "settings": {pools},
+		}
+		if forwarding != "" {
+			form.Set("forwarding", forwarding)
+		}
+		return request(f.handler, http.MethodPost, "/settings/upstreams", form, f.cookie)
+	}
+	base := scopedEditBase(f.state, "edit-upstreams", "")
+	if saved := post(base, routes); saved.Code != http.StatusSeeOther || f.state.Desired.Forwarding["private.test"] != "private" ||
+		f.state.Desired.Pools["private"][0].Transport != "udp" {
+		t.Fatalf("could not save endpoint and forwarding together: HTTP %d", saved.Code)
+	}
+	checkContent(t, request(f.handler, http.MethodGet, "/settings", nil, f.cookie), "Forwarding JSON", "private.test")
+	if saved := post("", ""); saved.Code != http.StatusSeeOther || f.state.Desired.Forwarding["private.test"] != "private" {
+		t.Fatalf("pool-only edit did not preserve forwarding: HTTP %d", saved.Code)
+	}
+	base = scopedEditBase(f.state, "edit-upstreams", "")
+	if saved := post(base, `{}`); saved.Code != http.StatusSeeOther || len(f.state.Desired.Forwarding) != 0 {
+		t.Fatalf("could not clear forwarding: HTTP %d", saved.Code)
+	}
+	if stale := post(base, routes); stale.Code != http.StatusConflict || len(f.state.Desired.Forwarding) != 0 {
+		t.Fatalf("stale forwarding edit was not rejected: HTTP %d", stale.Code)
 	}
 }
 

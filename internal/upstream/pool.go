@@ -1,4 +1,4 @@
-// Package upstream exchanges DNS messages with named, encrypted resolver pools.
+// Package upstream exchanges DNS messages with named resolver pools.
 package upstream
 
 import (
@@ -226,7 +226,7 @@ func (p *Pools) exchange(ctx context.Context, endpoints []*endpoint, query *dns.
 			return reply, nil
 		}
 	}
-	return nil, errors.New("encrypted upstream pool exhausted")
+	return nil, errors.New("upstream pool exhausted")
 }
 
 func (p *Pools) try(ctx context.Context, ep *endpoint, query *dns.Msg) (*dns.Msg, error) {
@@ -283,7 +283,7 @@ func upstreamQuery(request *dns.Msg) (*dns.Msg, bool, error) {
 	if opt == nil {
 		return query, true, nil
 	}
-	query.SetEdns0(1232, opt.Do())
+	query.SetEdns0(upstreamUDPSize, opt.Do())
 	cacheable := opt.Version() == 0 && !opt.Co() && opt.Z() == 0
 	upstreamOPT := query.IsEdns0()
 	for _, item := range opt.Option {
@@ -303,18 +303,11 @@ func upstreamQuery(request *dns.Msg) (*dns.Msg, bool, error) {
 }
 
 func validateReply(kind string, query, reply *dns.Msg) error {
-	id := query.Id
-	if kind == "doq" || kind == "doh" {
-		id = 0
+	if err := validateReplyQuestion(kind, query, reply); err != nil {
+		return err
 	}
-	if reply == nil || !reply.Response || reply.Opcode != dns.OpcodeQuery ||
-		reply.Id != id || reply.Truncated || reply.Zero || len(reply.Question) != 1 ||
-		reply.IsTsig() != nil {
-		return errors.New("invalid DNS response envelope")
-	}
-	got, want := reply.Question[0], query.Question[0]
-	if dns.CanonicalName(got.Name) != want.Name || got.Qtype != want.Qtype || got.Qclass != want.Qclass {
-		return errors.New("mismatched DNS question")
+	if reply.Truncated {
+		return errors.New("truncated DNS response")
 	}
 	if reply.Rcode != dns.RcodeSuccess && reply.Rcode != dns.RcodeNameError {
 		return fmt.Errorf("upstream DNS error %d", reply.Rcode)
@@ -327,6 +320,23 @@ func validateReply(kind string, query, reply *dns.Msg) error {
 			}
 			seenOPT = true
 		}
+	}
+	return nil
+}
+
+func validateReplyQuestion(kind string, query, reply *dns.Msg) error {
+	id := query.Id
+	if kind == "doq" || kind == "doh" {
+		id = 0
+	}
+	if reply == nil || !reply.Response || reply.Opcode != dns.OpcodeQuery ||
+		reply.Id != id || reply.Zero || len(reply.Question) != 1 ||
+		reply.IsTsig() != nil {
+		return errors.New("invalid DNS response envelope")
+	}
+	got, want := reply.Question[0], query.Question[0]
+	if dns.CanonicalName(got.Name) != want.Name || got.Qtype != want.Qtype || got.Qclass != want.Qclass {
+		return errors.New("mismatched DNS question")
 	}
 	return nil
 }

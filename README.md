@@ -1,6 +1,6 @@
 # Marco
 
-Marco is a LAN DNS forwarder and local name service. It serves UDP and TCP, applies client-specific filtering and DNS policies, and builds local records from manual settings and UniFi inventory. Verified DNS-over-TLS, DNS-over-HTTPS, and DNS-over-QUIC are available for upstream forwarding.
+Marco is a LAN DNS forwarder and local name service. It serves UDP and TCP, applies client-specific filtering and DNS policies, and builds local records from manual settings and UniFi inventory. Upstreams support verified DNS-over-TLS, DNS-over-HTTPS, DNS-over-QUIC, and explicitly configured plain DNS over UDP or TCP.
 
 Each instance runs as one Go binary with an embedded admin console and its own SQLite databases. The console supports an Argon2id password account and PocketID-compatible OIDC.
 
@@ -48,6 +48,7 @@ The deployment file contains startup settings. Marco seeds its database from `in
 
 - Preserve client peer addresses through containers, VLAN routing and relays. An address-only policy is useful for an unobserved relay. Name a known device in a static reservation so the policy can yield to contradictory UniFi ownership. Unknown clients follow the longest matching subnet policy, then the filtered default.
 - Add private zones for internal-only suffixes and split zones for public suffixes with local overrides. Configure LAN reverse CIDRs explicitly.
+- Route a DNS suffix to a dedicated upstream pool under **Settings → Forwarding JSON**. [Conditional forwarding and Tailscale MagicDNS](docs/operations.md#conditional-forwarding)
 - Add manual `A`, `AAAA`, `CNAME`, and `PTR` entries under `records` in the desired configuration or through **Local DNS** in the console. For `CNAME` and `PTR`, `value` is the target DNS name. Set `public: true` on a CNAME that intentionally targets external DNS. [Example records](examples/marco.desired.json)
 - Give each encrypted endpoint a fixed IP or a list of `bootstrap` IPs when possible. Keep the verification name and HTTPS URL for the actual provider. Set `upstream.bootstrapDNS` to an independent resolver address or opt into `upstream.systemBootstrap` after verifying that system DNS resolves the endpoint while Marco is stopped. Run `marco upstream-test --config marco.json --pool resolver:0` to opt into a live provider test.
 - Use matching fallback resolver profiles. For DoH, enter the full provider HTTPS URL. For DoT or DoQ, use `serverName` for the profile-specific TLS name. For fixed dial addresses, the TLS name and HTTP authority remain those of the provider.

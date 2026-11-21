@@ -60,6 +60,10 @@ func newCompiler(deployment config.Deployment) (runtime.Compiler, error) {
 		if d.Default.Pool == "" && len(d.Pools) > 1 {
 			return nil, errors.New("select a default upstream pool when configuring several pools")
 		}
+		forwarding, err := compileForwarding(d)
+		if err != nil {
+			return nil, err
+		}
 		if err := validateBootstrap(d, options.BootstrapResolver != nil); err != nil {
 			return nil, err
 		}
@@ -100,15 +104,36 @@ func newCompiler(deployment config.Deployment) (runtime.Compiler, error) {
 			return nil, err
 		}
 		generation := sha256.Sum256(encoded)
-		if lastUpstream != nil && lastUpstream.generation == generation {
-			return &contract.View{Policies: rules, Local: local, Upstream: lastUpstream}, nil
+		if lastUpstream == nil || lastUpstream.generation != generation {
+			pools, err := upstream.New(d.Pools, options)
+			if err != nil {
+				return nil, err
+			}
+			lastUpstream = &forwarder{pools, generation}
 		}
-		pools, err := upstream.New(d.Pools, options)
-		if err != nil {
-			return nil, err
-		}
-		return &contract.View{Policies: rules, Local: local, Upstream: &forwarder{pools, generation}}, nil
+		return &contract.View{Policies: rules, Local: local, Upstream: lastUpstream, Forwarding: forwarding}, nil
 	}, nil
+}
+
+func compileForwarding(d config.Desired) (map[string]string, error) {
+	if len(d.Forwarding) > 1024 {
+		return nil, errors.New("configure at most 1024 forwarding suffixes")
+	}
+	routes := make(map[string]string, len(d.Forwarding))
+	for suffix, pool := range d.Forwarding {
+		name, err := config.Name(suffix)
+		if err != nil {
+			return nil, fmt.Errorf("forwarding suffix: %w", err)
+		}
+		if _, exists := routes[name]; exists {
+			return nil, fmt.Errorf("duplicate forwarding suffix %q", name)
+		}
+		if len(d.Pools[pool]) == 0 {
+			return nil, fmt.Errorf("forwarding suffix %q references unknown upstream pool %q", name, pool)
+		}
+		routes[name] = pool
+	}
+	return routes, nil
 }
 
 func validateBootstrap(d config.Desired, independent bool) error {

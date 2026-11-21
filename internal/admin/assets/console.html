@@ -384,13 +384,15 @@
   <form action="/settings/test-upstream" method="post" class="toolbar">
     <input type="hidden" name="csrf" value="{{.CSRF}}">
     <label>Pool <select name="pool" required><option value="">Choose a pool</option>{{range $id, $_ := .Desired.Pools}}<option value="{{$id}}">{{$id}}</option>{{end}}</select></label>
-    <button type="submit" class="button">Test encrypted endpoints</button>
+    <button type="submit" class="button">Test endpoints</button>
   </form>
   {{with .Feedback.Upstream}}<pre class="output" data-json-output aria-label="Upstream test results">{{pretty .}}</pre>{{end}}
   <form action="/settings/upstreams" method="post" class="stack">
     {{template "revision-fields" .}}
     {{template "edit-base" .EditBase}}
     <label>Pools JSON <textarea data-json-editor name="settings" rows="12" spellcheck="false" required>{{.PoolText}}</textarea></label>
+    <p id="forwarding-help" class="muted">Map DNS suffixes to pool names. The most specific match applies after local DNS and policy checks.</p>
+    <label>Forwarding JSON <textarea data-json-editor name="forwarding" rows="5" spellcheck="false" required aria-describedby="forwarding-help">{{.ForwardingText}}</textarea></label>
     <button type="submit" class="button primary">Save upstreams</button>
   </form>
 </section>

@@ -57,9 +57,15 @@ func newEndpoint(pool string, index int, cfg config.Endpoint, options Options, i
 		resolver:  options.BootstrapResolver,
 		idleLimit: idleLimit,
 	}
+	plain := ep.kind == "udp" || ep.kind == "tcp"
 	serverName := strings.TrimSuffix(cfg.ServerName, ".")
 	var port uint16
 	switch ep.kind {
+	case "udp", "tcp":
+		if cfg.URL != "" || cfg.ServerName != "" {
+			return nil, errors.New("plain DNS endpoints do not accept a URL or TLS verification name")
+		}
+		port = 53
 	case "dot", "doq":
 		if cfg.URL != "" {
 			return nil, errors.New("only DoH endpoints accept a URL")
@@ -90,7 +96,7 @@ func newEndpoint(pool string, index int, cfg config.Endpoint, options Options, i
 			ep.host = uri.Hostname()
 		}
 	default:
-		return nil, errors.New("transport must be dot, doh, or doq")
+		return nil, errors.New("transport must be udp, tcp, dot, doh, or doq")
 	}
 	if cfg.Port != 0 {
 		port = cfg.Port
@@ -103,12 +109,15 @@ func newEndpoint(pool string, index int, cfg config.Endpoint, options Options, i
 	if ep.host == "" && len(ep.bootstrap) != 0 {
 		ep.host = serverName
 	}
-	if !validHost(ep.host) || !validHost(serverName) {
+	if !validHost(ep.host) || (!plain && !validHost(serverName)) {
 		return nil, errors.New("invalid upstream address or TLS verification name")
 	}
 	ep.port = strconv.Itoa(int(port))
-	ep.tls = &tls.Config{ServerName: serverName, RootCAs: options.TLSRoots, MinVersion: tls.VersionTLS12}
 	ep.health = EndpointStatus{Pool: pool, Index: index, Transport: ep.kind, State: "untested"}
+	if plain {
+		return ep, nil
+	}
+	ep.tls = &tls.Config{ServerName: serverName, RootCAs: options.TLSRoots, MinVersion: tls.VersionTLS12}
 
 	switch ep.kind {
 	case "doh":
@@ -161,7 +170,10 @@ func validHost(host string) bool {
 }
 
 func (e *endpoint) exchange(ctx context.Context, query *dns.Msg) (*dns.Msg, error) {
-	if e.kind == "dot" {
+	switch e.kind {
+	case "udp", "tcp":
+		return e.exchangePlain(ctx, query)
+	case "dot":
 		return e.exchangeTLS(ctx, query)
 	}
 	zeroID := *query
@@ -494,6 +506,6 @@ func errorClass(err error) string {
 	case errors.As(err, &unknown), errors.As(err, &certificate):
 		return "TLS certificate verification failed"
 	default:
-		return "encrypted exchange failed"
+		return "DNS exchange failed"
 	}
 }
