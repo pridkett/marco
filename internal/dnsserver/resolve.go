@@ -135,6 +135,11 @@ func evaluate(ctx context.Context, view *contract.View, in contract.Input, query
 	if reply.Rcode == dns.RcodeNameError || len(reply.Answer) == 0 {
 		reason = "upstream-negative"
 	}
+	if blocked, detail := upstreamBlock(reply); blocked {
+		// The upstream's reason replaces any local allow rule, which did not
+		// decide the answer the client receives.
+		reason, ruleRef = "upstream-blocked", detail
+	}
 	resolved := outcome(reply.Rcode, origin, reason)
 	resolved.result.Rule = ruleRef
 	resolved.result.Cache = cache

@@ -172,6 +172,8 @@ func TestManagementAPI(t *testing.T) {
 
 	w = api("GET", managementPrefix+"/dashboard?range=15m", read, "", 200)
 	requireJSON(t, w, `"counts":{"queries":4`)
+	requireJSON(t, w, `"upstreamBlocks":0`)
+	requireJSON(t, w, `"upstreamBlocked":[]`)
 	w = api("GET", managementPrefix+"/query-log?type=A&question=blocked&outcome=blocked&limit=1", read, "", 200)
 	var page historyData
 	if err := json.Unmarshal(w.Body.Bytes(), &page); err != nil || len(page.Entries) != 1 ||

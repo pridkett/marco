@@ -34,8 +34,8 @@ The issuer must return a signed JWT access token with type `at+jwt`, the exact r
 
 | MCP tool | REST route | Arguments and result |
 | --- | --- | --- |
-| `get_dashboard` | `GET /api/v1/dashboard` | `range` accepts `15m`, `1h`, or `24h` (default). Returns counts, activity buckets, average latency, cache hit rate, blocking status, and the top five clients, queried domains, and blocked domains. |
-| `search_query_log` | `GET /api/v1/query-log` | Filter by `client` (comma-separated IPs or anonymized IDs), `question` (substring), `type` (for example `AAAA`), `outcome`, `after` (inclusive), or `until` (exclusive). Times use RFC 3339. Pass `next` as `before` with the same filters to read older entries. |
+| `get_dashboard` | `GET /api/v1/dashboard` | `range` accepts `15m`, `1h`, or `24h` (default). Returns counts, activity buckets, average latency, cache hit rate, blocking status, and the top five clients, queried domains, blocked domains, and upstream-blocked domains. `blocks` counts Marco's policy blocks and `upstreamBlocks` counts blocks by an upstream resolver. |
+| `search_query_log` | `GET /api/v1/query-log` | Filter by `client` (comma-separated IPs or anonymized IDs), `question` (substring), `type` (for example `AAAA`), `outcome` (for example `blocked`, `upstream blocked`, `allowed`, or `NXDOMAIN`), `after` (inclusive), or `until` (exclusive). Times use RFC 3339. Pass `next` as `before` with the same filters to read older entries. |
 | `test_policy` | `POST /api/v1/policies/test` | Send `client` IP, `question` as a DNS name or an HTTP(S) URL, and optional `type` (default `A`). Returns the selected policy and predicted result. An external-eligible result means a live DNS request would proceed to an upstream. |
 | `get_policies` | `GET /api/v1/policies` | Returns current settings, their revision, and valid pool, subscription, and built-in service IDs. |
 | `update_policies` | `PATCH /api/v1/policies` | Takes the current `revision` and any of `default`, `groups`, `assignments`, or `services`. Requires both permissions. |
@@ -78,6 +78,12 @@ The device, Local DNS, policy, blocklist, upstream pool, and portable settings f
 ## DNS dashboard
 
 The dashboard defaults to 24 hours and also offers 15-minute and 1-hour views. When query history is enabled, Marco restores recent traffic counts from retained history at startup and displays client and domain rankings. Select a ranked client or domain to open the corresponding query log filter. When query history is disabled, the chart and summary counts cover only the current run.
+
+### Upstream blocks
+
+Marco also notices when a filtering upstream resolver, such as NextDNS, blocks a query. It treats a reply as an upstream block when it carries an Extended DNS Error (RFC 8914) of Blocked, Censored, Filtered or Prohibited, or when every address in the answer is `0.0.0.0` or `::`. **Upstream blocks** on the dashboard counts these separately from **Policy blocks**, which are Marco's own blocklists, service blocks and manual denies. **Top upstream-blocked domains** ranks the names.
+
+In the Query Log these rows show an **Upstream block** badge. Expand a row to see the upstream's reason. NextDNS, for example, names the blocklist that matched. Filter with the outcome `upstream blocked` to list them. Detection only affects statistics. Marco caches and returns the upstream reply unchanged. History recorded before this feature shows these queries as ordinary upstream answers.
 
 In the Query Log, click a row to expand or collapse its details. Use the Type filter for an exact DNS question type such as `A`, `AAAA`, `HTTPS`, or `TYPE65400`. Older matching rows load as you scroll to the bottom. The Older queries link also lets you continue manually.
 

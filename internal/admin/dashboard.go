@@ -125,6 +125,8 @@ func (s *server) dashboard(ctx context.Context, p *page, selected string, state 
 		{"Top clients", "Client", "client", "", "No client queries in this range.", top.Clients},
 		{"Top queried domains", "Domain", "question", "", "No queried domains in this range.", top.Domains},
 		{"Top blocked domains", "Domain", "question", "blocked", "No blocked domains in this range.", top.Blocked},
+		{"Top upstream-blocked domains", "Domain", "question", "upstream blocked",
+			"No upstream-blocked domains in this range.", top.UpstreamBlocked},
 	} {
 		panel := rankPanel{Title: group.title, Label: group.label, Empty: group.empty}
 		for _, entry := range group.entries {

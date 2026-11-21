@@ -248,7 +248,7 @@ tr:last-child > td, tr:last-child > th { border-bottom: 0; }
 .query-badge.local, .query-badge.allowed { background: var(--success-bg); color: var(--success); }
 .query-badge.cache { background: var(--query-cache-bg); color: var(--query-cache); }
 .query-badge.upstream { background: var(--accent-bg); color: var(--accent); }
-.query-badge.blocked { background: var(--query-blocked-bg); color: var(--query-blocked); }
+.query-badge.blocked, .query-badge.upstream-blocked { background: var(--query-blocked-bg); color: var(--query-blocked); }
 .query-badge.error { background: var(--error-bg); color: var(--error); }
 
 @media (max-width: 38rem) {
@@ -447,7 +447,7 @@ tr:last-child > td, tr:last-child > th { border-bottom: 0; }
 .dashboard-heading { margin-bottom: .8rem; }
 .activity-range { gap: .5rem; }
 .activity-range select { width: auto; }
-.dashboard-metrics { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.dashboard-metrics { grid-template-columns: repeat(5, minmax(0, 1fr)); }
 .dashboard-metrics .metric { padding: 1rem 1.15rem; }
 .dashboard-metrics dt { font-weight: 550; }
 .dashboard-metrics dd { margin-top: .42rem; font-size: clamp(1.4rem, 4vw, 2rem); }
@@ -458,7 +458,7 @@ tr:last-child > td, tr:last-child > th { border-bottom: 0; }
   gap: 1rem;
   margin-bottom: 1.6rem;
 }
-.dashboard-rankings { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.dashboard-rankings { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .dashboard-card, .dashboard-metrics .panel { box-shadow: 0 1px 2px #0001; }
 .dashboard-card-header { min-height: 3.3rem; padding: .7rem 1.15rem; border-bottom: 1px solid var(--border); }
 .dashboard-card-header h2, .dashboard-card-header h3 { font-size: .99rem; font-weight: 650; }
@@ -503,7 +503,7 @@ tr:last-child > td, tr:last-child > th { border-bottom: 0; }
 .dashboard-integrations-body { border-top: 1px solid var(--border); padding: 1rem; }
 
 @media (max-width: 60rem) {
-  .dashboard-rankings { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .dashboard-metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 @media (max-width: 46rem) {
   .dashboard-grid, .dashboard-rankings { grid-template-columns: minmax(0, 1fr); }

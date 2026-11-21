@@ -97,6 +97,70 @@ func TestHistoryFiltersAnonymizationAndRetention(t *testing.T) {
 	}
 }
 
+func TestUpstreamBlocksAreCountedApartFromPolicy(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "upstream.sqlite")
+	cfg := Settings{Enabled: true, Retention: time.Hour}
+	l, err := Open(path, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	upstreamBlock := func(at time.Time, name, origin string) contract.Event {
+		event := logEvent(at, name)
+		event.Result = contract.Result{
+			RCode: dns.RcodeSuccess, Origin: origin, Reason: UpstreamBlocked,
+			Rule: "Blocked by NextDNS: blocklist:fixture", Cache: "miss",
+		}
+		return event
+	}
+	allowed := logEvent(now.Add(-time.Minute), "allowed.test.")
+	allowed.Result = contract.Result{RCode: dns.RcodeSuccess, Origin: "upstream", Reason: "upstream-answer", Rule: "allow-rule", Cache: "miss"}
+	l.Observe(upstreamBlock(now.Add(-3*time.Minute), "tracker.test.", "upstream"))
+	l.Observe(upstreamBlock(now.Add(-2*time.Minute), "tracker.test.", "cache"))
+	l.Observe(upstreamBlock(now.Add(-2*time.Minute), "other-tracker.test.", "upstream"))
+	l.Observe(logEvent(now.Add(-time.Minute), "filtered.test."))
+	l.Observe(allowed)
+	if c := l.Stats().Total; c.UpstreamBlocks != 3 || c.Blocks != 1 || c.Queries != 5 {
+		t.Fatalf("live counts: %+v", c)
+	}
+	if err := l.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	l, err = Open(path, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer l.Close()
+	if _, c := l.Activity(now, 15*time.Minute, time.Minute); c.UpstreamBlocks != 3 || c.Blocks != 1 {
+		t.Fatalf("restored counts: %+v", c)
+	}
+	top, err := l.TopQueries(t.Context(), now.Add(-10*time.Minute), now)
+	if err != nil || len(top.UpstreamBlocked) != 2 || top.UpstreamBlocked[0] != (RankedEntry{"tracker.test.", 2}) ||
+		len(top.Blocked) != 1 || top.Blocked[0].Value != "filtered.test." {
+		t.Fatalf("rankings: %+v (%v)", top, err)
+	}
+	for _, outcome := range []string{"upstream blocked", "Upstream-Blocked"} {
+		page, err := l.Search(t.Context(), Filter{Outcome: outcome})
+		if err != nil || len(page.Entries) != 3 {
+			t.Fatalf("%q search: %+v %v", outcome, page, err)
+		}
+		for _, entry := range page.Entries {
+			if !entry.UpstreamBlocked() || entry.AllowedByRule() {
+				t.Fatalf("upstream block reported as allowed: %+v", entry)
+			}
+		}
+	}
+	page, err := l.Search(t.Context(), Filter{Outcome: "allowed"})
+	if err != nil || len(page.Entries) != 1 || page.Entries[0].Name != "allowed.test." {
+		t.Fatalf("allowed search included upstream blocks: %+v %v", page, err)
+	}
+	page, err = l.Search(t.Context(), Filter{Outcome: "blocked"})
+	if err != nil || len(page.Entries) != 1 || page.Entries[0].Name != "filtered.test." {
+		t.Fatalf("policy block search: %+v %v", page, err)
+	}
+}
+
 func TestHistoryBudget(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "budget.sqlite")
 	l, err := Open(path, Settings{Enabled: true, Queue: 512, MaxBytes: minMaxBytes})

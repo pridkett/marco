@@ -25,7 +25,7 @@ const dashboardSchema = `"properties":{
 const historyProperties = `
 	"client":{"type":"string","description":"One or more comma-separated IPs or anonymized client IDs."},
 	"question":{"type":"string","description":"Case-insensitive substring of the DNS name."},
-	"outcome":{"type":"string","description":"Outcome such as blocked, allowed, cache hit, local dns, or NXDOMAIN."},
+	"outcome":{"type":"string","description":"Outcome such as blocked, upstream blocked, allowed, cache hit, local dns, or NXDOMAIN."},
 	"type":{"type":"string","description":"DNS question type, such as A, AAAA, or TYPE65."},
 	"after":{"type":"string","format":"date-time","description":"Inclusive RFC 3339 lower time bound."},
 	"until":{"type":"string","format":"date-time","description":"Exclusive RFC 3339 upper time bound."},

@@ -10,7 +10,7 @@ group in the ID token’s `groups` claim.
 
 | Page | Purpose |
 | --- | --- |
-| `/` | DNS traffic, query rankings, blocking pause controls, and integration health |
+| `/` | DNS traffic, policy and upstream block counts, query rankings, blocking pause controls, and integration health |
 | `/devices` | Inventory, device search and presence filters, controller polling and publication conflicts |
 | `/devices/edit?id=<id>` | Edit an observed or manual device’s settings. Use `?new=1` to add a manual device |
 | `/local-dns` | Zones, aliases, records, reverse ranges and exclusions |

@@ -18,9 +18,9 @@ func (l *Log) restoreRecent(ctx context.Context, now time.Time) error {
 	oldest := now.Truncate(time.Minute).Add(-time.Duration(len(l.recent)-1) * time.Minute)
 	rows, err := l.writer.QueryContext(ctx, `
 		SELECT time / ? AS minute, COUNT(*), SUM(origin = 'local'), SUM(origin = 'cache' OR cache = 'hit'),
-			SUM(cache = 'miss'), SUM(origin = 'policy'), SUM(rcode = ?), SUM(latency)
+			SUM(cache = 'miss'), SUM(origin = 'policy'), SUM(reason = ?), SUM(rcode = ?), SUM(latency)
 		FROM dns_queries WHERE time >= ? AND time <= ? GROUP BY minute
-	`, int64(time.Minute), dns.RcodeServerFailure, oldest.UnixNano(), now.UnixNano())
+	`, int64(time.Minute), UpstreamBlocked, dns.RcodeServerFailure, oldest.UnixNano(), now.UnixNano())
 	if err != nil {
 		return err
 	}
@@ -29,7 +29,8 @@ func (l *Log) restoreRecent(ctx context.Context, now time.Time) error {
 	for rows.Next() {
 		var minute, latency int64
 		var c Counts
-		if err := rows.Scan(&minute, &c.Queries, &c.Local, &c.Cache, &c.Misses, &c.Blocks, &c.Errors, &latency); err != nil {
+		if err := rows.Scan(&minute, &c.Queries, &c.Local, &c.Cache, &c.Misses, &c.Blocks, &c.UpstreamBlocks,
+			&c.Errors, &latency); err != nil {
 			return err
 		}
 		b := &bucket{minute: minute}
@@ -38,6 +39,7 @@ func (l *Log) restoreRecent(ctx context.Context, now time.Time) error {
 		b.counts.cache.Store(c.Cache)
 		b.counts.misses.Store(c.Misses)
 		b.counts.blocks.Store(c.Blocks)
+		b.counts.upstream.Store(c.UpstreamBlocks)
 		b.counts.errors.Store(c.Errors)
 		b.counts.latency.Store(int64(time.Duration(latency) * time.Microsecond))
 		restored = append(restored, b)
@@ -84,6 +86,8 @@ type Rankings struct {
 	Clients []RankedEntry `json:"clients"`
 	Domains []RankedEntry `json:"domains"`
 	Blocked []RankedEntry `json:"blocked"`
+	// UpstreamBlocked ranks names an upstream resolver blocked.
+	UpstreamBlocked []RankedEntry `json:"upstreamBlocked"`
 }
 
 // TopQueries ranks retained history. Client keys have already passed through the
@@ -103,6 +107,7 @@ func (l *Log) TopQueries(ctx context.Context, from, until time.Time) (Rankings, 
 		{"client", "client <> ''", &top.Clients},
 		{"name", "name <> ''", &top.Domains},
 		{"name", "name <> '' AND origin = 'policy'", &top.Blocked},
+		{"name", "name <> '' AND reason = '" + UpstreamBlocked + "'", &top.UpstreamBlocked},
 	} {
 		results, err := l.rank(ctx, group.column, group.condition, from, until)
 		if err != nil {
