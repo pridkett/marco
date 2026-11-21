@@ -127,7 +127,8 @@ func serve(ctx context.Context, d config.Deployment) error {
 			slog.Warn("admin sign-in degraded", "error", err)
 		}
 		hooks := admin.Hooks{
-			ManagementAPI: d.Admin.ManagementAPI, Version: version, Catalog: d.Catalog,
+			ManagementAPI: d.Admin.ManagementAPI, ManagementMaxPageSize: d.Admin.ManagementMaxPageSize,
+			Version: version, Catalog: d.Catalog,
 			Snapshot: p.Snapshot, Update: p.Update, Ready: ready, Revision: p.Revision, Refresh: lists.Trigger,
 		}
 		hooks.Blocking, hooks.SetBlocking = blocking.Status, blocking.Set

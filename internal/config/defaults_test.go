@@ -50,6 +50,16 @@ func TestOIDCOnlyDeployment(t *testing.T) {
 	if err := d.Validate(); err != nil {
 		t.Fatalf("OIDC-only deployment with management API: %v", err)
 	}
+	for _, limit := range []int{-1, MaxManagementPageSize + 1} {
+		d.Admin.ManagementMaxPageSize = limit
+		if err := d.Validate(); err == nil {
+			t.Fatalf("accepted management page size %d outside the supported range", limit)
+		}
+	}
+	d.Admin.ManagementMaxPageSize = 1000
+	if err := d.Validate(); err != nil {
+		t.Fatalf("management page size of 1000: %v", err)
+	}
 	d.Admin.Listen = ""
 	if err := d.Validate(); err == nil {
 		t.Fatal("accepted the management API without an admin listener")

@@ -41,7 +41,9 @@ The issuer must return a signed JWT access token with type `at+jwt`, the exact r
 | `update_policies` | `PATCH /api/v1/policies` | Takes the current `revision` and any of `default`, `groups`, `assignments`, or `services`. Requires both permissions. |
 | `list_clients` | `GET /api/v1/devices` | Filter by exact `id`, `controller`, `site`, or `presence` (`connected`, `absent`, `manual`, or `legacy`), or use a `search` substring. Returns observed addresses, configured group and policy, publication status, and site poll timestamps. Pass `next` as `after` to continue. |
 
-The two list operations return 50 entries by default and support `limit` up to 200. Query history and rankings use retained rows and respect history anonymization. Dashboard counts also include queries whose history entries were dropped. Inventory can contain IP and MAC addresses and is governed by the API's read permission.
+The query log and client inventory return 50 entries when `limit` is omitted, up to a default maximum of 200 per request. Set `admin.managementMaxPageSize` to a value from 1 to 5000 and restart Marco to change the maximum for both MCP and REST. For 1,000 records at a time, set `"managementMaxPageSize": 1000` in the `admin` object and pass `"limit": 1000` in MCP or `?limit=1000` in REST. If the configured maximum is below 50, an omitted `limit` uses that lower value.
+
+Query history and rankings use retained rows and respect history anonymization. Dashboard counts also include queries whose history entries were dropped. Inventory can contain IP and MAC addresses and is governed by the API's read permission.
 
 Send JSON bodies with `Content-Type: application/json`. Policy edits replace the `default` policy or full `assignments` array when supplied. An empty `assignments` array clears it. `groups` and `services` replace only the specified keys and accept `null` for removing an entry. Omit `services` or `subscriptions` within a replacement policy to inherit that selection, or use an empty array to clear it. This example creates a local-only group at revision 42.
 

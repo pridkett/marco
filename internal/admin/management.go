@@ -29,6 +29,8 @@ const (
 	managementLimit  = 1 << 20
 )
 
+const managementPageDefault = 50
+
 type managementError struct {
 	Status  int    `json:"status"`
 	Message string `json:"message"`
@@ -72,13 +74,14 @@ func managementOperation[I, O any](method, path, name, description string, schem
 }
 
 func (s *server) managementOperations() []operation {
+	defaultPage, maxPage := s.managementPageLimits()
 	return []operation{
 		managementOperation(http.MethodGet, "/dashboard", "get_dashboard",
 			"Get DNS counts, activity buckets, cache hit rate, blocking status, and top clients and domains. Defaults to 24h.",
 			objectSchema(dashboardSchema), nil, false, s.managementDashboard),
 		managementOperation(http.MethodGet, "/query-log", "search_query_log",
 			"Search retained DNS history, newest first. Pass next as before to fetch an older page with the same filters.",
-			objectSchema(historySchema), []string{"before", "limit"}, false, s.managementHistory),
+			pagedSchema(historyProperties, defaultPage, maxPage), []string{"before", "limit"}, false, s.managementHistory),
 		managementOperation(http.MethodPost, "/policies/test", "test_policy",
 			"Preview a DNS query for a client IP using a domain or HTTP(S) URL. Explains the selected policy and result without contacting an upstream.",
 			objectSchema(previewSchema), nil, false, s.managementPreview),
@@ -90,8 +93,27 @@ func (s *server) managementOperations() []operation {
 			objectSchema(policyPatchSchema), nil, true, s.managementPatchPolicy),
 		managementOperation(http.MethodGet, "/devices", "list_clients",
 			"Find UniFi, manual, and legacy clients. Get addresses, presence, assigned policies, DNS publication and last site poll. Pass next as after to continue.",
-			objectSchema(devicesSchema), []string{"limit"}, false, s.managementDevices),
+			pagedSchema(devicesProperties, defaultPage, maxPage), []string{"limit"}, false, s.managementDevices),
 	}
+}
+
+func (s *server) managementPageLimits() (defaultPage, maxPage int) {
+	maxPage = s.hooks.ManagementMaxPageSize
+	if maxPage == 0 {
+		maxPage = config.DefaultManagementMaxPageSize
+	}
+	return min(managementPageDefault, maxPage), maxPage
+}
+
+func (s *server) managementPageSize(limit int) (int, *managementError) {
+	defaultPage, maxPage := s.managementPageLimits()
+	if limit < 0 || limit > maxPage {
+		return 0, badInput(fmt.Sprintf("The page limit must be between 1 and %d.", maxPage))
+	}
+	if limit == 0 {
+		return defaultPage, nil
+	}
+	return limit, nil
 }
 
 func (s *server) registerManagement(mux *http.ServeMux) {

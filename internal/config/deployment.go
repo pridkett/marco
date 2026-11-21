@@ -92,7 +92,9 @@ func (s UpstreamSettings) Resolver() *net.Resolver {
 }
 
 type AdminSettings struct {
-	ManagementAPI  bool           `json:"managementAPI,omitempty"`
+	ManagementAPI         bool `json:"managementAPI,omitempty"`
+	ManagementMaxPageSize int  `json:"managementMaxPageSize,omitempty"`
+
 	Listen         string         `json:"listen"`
 	PublicURL      string         `json:"publicURL"`
 	TrustedProxies []netip.Prefix `json:"trustedProxies"`
@@ -109,6 +111,9 @@ type AdminSettings struct {
 }
 
 const (
+	DefaultManagementMaxPageSize = 200
+	MaxManagementPageSize        = 5000
+
 	DefaultAdminUsername = "admin"
 	AdminUsernameEnv     = "MARCO_ADMIN_USERNAME"
 	AdminPasswordEnv     = "MARCO_ADMIN_PASSWORD"
@@ -280,6 +285,9 @@ func (d Deployment) Validate() error {
 	}
 	if d.Admin.ManagementAPI && (d.Admin.Listen == "" || d.Admin.Issuer == "") {
 		return errors.New("admin.managementAPI requires an admin listener and OIDC")
+	}
+	if limit := d.Admin.ManagementMaxPageSize; limit < 0 || limit > MaxManagementPageSize {
+		return fmt.Errorf("admin.managementMaxPageSize must be 1–%d or zero to use the default", MaxManagementPageSize)
 	}
 	if d.Admin.Listen != "" {
 		host, err := splitListen(d.Admin.Listen)

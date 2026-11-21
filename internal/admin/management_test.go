@@ -4,6 +4,7 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
@@ -55,6 +56,10 @@ func TestManagementAPI(t *testing.T) {
 				Addresses: []config.Address{{IP: netip.MustParseAddr("192.0.2.10"), Active: true}}},
 			"speaker": {ID: "speaker", Controller: "unifi", Site: "test", Connected: true},
 		}
+		for i := range 1001 {
+			id := fmt.Sprintf("bulk-%04d", i)
+			state.Devices[id] = config.Device{ID: id}
+		}
 		return nil
 	})
 	if err != nil {
@@ -76,6 +81,11 @@ func TestManagementAPI(t *testing.T) {
 		history.Observe(contract.Event{
 			Input:  contract.Input{Name: item.name, Type: item.kind, Time: now, Peer: netip.MustParseAddr("192.0.2.10")},
 			Result: contract.Result{Origin: "policy", RCode: dns.RcodeNameError},
+		})
+	}
+	for range 1001 {
+		history.Observe(contract.Event{
+			Input: contract.Input{Name: "bulk.example.test.", Type: dns.TypeTXT, Time: now.Add(-time.Hour)},
 		})
 	}
 	if err := history.Close(); err != nil {
@@ -205,6 +215,43 @@ func TestManagementAPI(t *testing.T) {
 	if err := db.DB().QueryRowContext(ctx, `SELECT COUNT(*) FROM admin_audit
 		WHERE account = ? AND operation = 'api-edit-policies' AND result = 'success' AND revision = ?`, issuer+"|operator", rev+1).Scan(&count); err != nil || count != 1 {
 		t.Fatalf("audit count = %d, error = %v", count, err)
+	}
+
+	api("GET", managementPrefix+"/query-log?limit=201", read, "", 400)
+	api("GET", managementPrefix+"/devices?limit=201", read, "", 400)
+	hooks.ManagementMaxPageSize = 1000
+	handler = New(manager, history, hooks)
+	w = api("POST", mcpPath, read, `{"jsonrpc":"2.0","id":10,"method":"tools/list"}`, 200)
+	if n := strings.Count(w.Body.String(), `"maximum":1000,"default":50`); n != 2 {
+		t.Fatalf("expected the configured maximum in both MCP list schemas, found %d", n)
+	}
+	w = api("GET", managementPrefix+"/query-log?type=TXT&limit=1000", read, "", 200)
+	if err := json.Unmarshal(w.Body.Bytes(), &page); err != nil || len(page.Entries) != 1000 || page.Next == 0 {
+		t.Fatalf("expected 1000 queries and a cursor, got %d queries with cursor %d (%v)", len(page.Entries), page.Next, err)
+	}
+	w = api("GET", managementPrefix+"/query-log?type=TXT&limit=1000&before="+jsonText(page.Next), read, "", 200)
+	page = historyData{}
+	if err := json.Unmarshal(w.Body.Bytes(), &page); err != nil || len(page.Entries) != 1 || page.Next != 0 {
+		t.Fatalf("expected 1 remaining query, got %d queries with cursor %d (%v)", len(page.Entries), page.Next, err)
+	}
+	w = api("POST", mcpPath, read, `{"jsonrpc":"2.0","id":11,"method":"tools/call","params":{
+		"name":"list_clients","arguments":{"search":"bulk-","limit":1000}}}`, 200)
+	var clients struct {
+		Result struct {
+			Content devicesData `json:"structuredContent"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &clients); err != nil || len(clients.Result.Content.Devices) != 1000 || clients.Result.Content.Next != "bulk-0999" {
+		t.Fatalf("expected 1000 devices and a cursor, got %d devices with cursor %q (%v)",
+			len(clients.Result.Content.Devices), clients.Result.Content.Next, err)
+	}
+	api("GET", managementPrefix+"/query-log?limit=1001", read, "", 400)
+
+	hooks.ManagementMaxPageSize = 2
+	handler = New(manager, history, hooks)
+	w = api("GET", managementPrefix+"/query-log?type=TXT", read, "", 200)
+	if err := json.Unmarshal(w.Body.Bytes(), &page); err != nil || len(page.Entries) != 2 || page.Next == 0 {
+		t.Fatalf("expected omitted limit to respect the cap, got %d queries with cursor %d (%v)", len(page.Entries), page.Next, err)
 	}
 }
 
