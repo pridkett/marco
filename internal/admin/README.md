@@ -18,7 +18,7 @@ group in the ID token’s `groups` claim.
 | `/services` | Service categories, hostname rule details, and per-service matching tests |
 | `/services/filter` | Edit inherited or custom service blocks for a group or device |
 | `/blocklists` | Subscription settings, artifact health, enable or disable, manual refresh and dry-run decisions |
-| `/query-log` | Query history filtered by client, name, outcome and UTC time |
+| `/query-log` | Query history filtered by client, name, DNS type, outcome and UTC time |
 | `/settings` | Upstream pools, endpoint tests, portable configuration and instance status |
 
 Pages and actions require an administrator session. The sign-in page is at

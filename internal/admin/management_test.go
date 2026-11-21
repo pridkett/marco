@@ -69,7 +69,10 @@ func TestManagementAPI(t *testing.T) {
 	for _, item := range []struct {
 		name string
 		kind uint16
-	}{{"blocked.example.test.", dns.TypeA}, {"other.example.test.", dns.TypeAAAA}, {"also-blocked.example.test.", dns.TypeA}} {
+	}{
+		{"blocked.example.test.", dns.TypeA}, {"other.example.test.", dns.TypeAAAA},
+		{"also-blocked.example.test.", dns.TypeA}, {"type-zero.example.test.", 0},
+	} {
 		history.Observe(contract.Event{
 			Input:  contract.Input{Name: item.name, Type: item.kind, Time: now, Peer: netip.MustParseAddr("192.0.2.10")},
 			Result: contract.Result{Origin: "policy", RCode: dns.RcodeNameError},
@@ -158,7 +161,7 @@ func TestManagementAPI(t *testing.T) {
 	}
 
 	w = api("GET", managementPrefix+"/dashboard?range=15m", read, "", 200)
-	requireJSON(t, w, `"counts":{"queries":3`)
+	requireJSON(t, w, `"counts":{"queries":4`)
 	w = api("GET", managementPrefix+"/query-log?type=A&question=blocked&outcome=blocked&limit=1", read, "", 200)
 	var page historyData
 	if err := json.Unmarshal(w.Body.Bytes(), &page); err != nil || len(page.Entries) != 1 ||
@@ -167,6 +170,11 @@ func TestManagementAPI(t *testing.T) {
 	}
 	w = api("GET", managementPrefix+"/query-log?type=A&before="+jsonText(page.Next), read, "", 200)
 	requireJSON(t, w, `"name":"blocked.example.test."`)
+	w = api("GET", managementPrefix+"/query-log?type=type0", read, "", 200)
+	if err := json.Unmarshal(w.Body.Bytes(), &page); err != nil || len(page.Entries) != 1 || page.Entries[0].Type != 0 {
+		t.Fatalf("unexpected TYPE0 history page: %s (%v)", w.Body, err)
+	}
+	api("GET", managementPrefix+"/query-log?type=TYPE65536", read, "", 400)
 	w = api("GET", managementPrefix+"/devices?search=192.0.2.10", read, "", 200)
 	requireJSON(t, w, `"id":"cam"`)
 	w = api("GET", managementPrefix+"/devices?presence=connected&limit=1", read, "", 200)

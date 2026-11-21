@@ -129,8 +129,8 @@ func (l *Log) Stats() Stats {
 type Filter struct {
 	Client   string // One or more comma-separated IPs or client IDs.
 	Question string
+	Type     *uint16 // Nil matches every DNS question type.
 	Outcome  string
-	Type     uint16 // Zero matches any query type.
 	After    time.Time
 	Until    time.Time
 	BeforeID int64
@@ -197,9 +197,9 @@ func (l *Log) Search(ctx context.Context, f Filter) (Page, error) {
 		clauses = append(clauses, "instr(name, ?) > 0")
 		args = append(args, strings.ToLower(f.Question))
 	}
-	if f.Type != 0 {
+	if f.Type != nil {
 		clauses = append(clauses, "type = ?")
-		args = append(args, f.Type)
+		args = append(args, *f.Type)
 	}
 	switch outcome := strings.ToLower(strings.TrimSpace(f.Outcome)); outcome {
 	case "":

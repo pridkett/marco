@@ -10,11 +10,9 @@ import (
 	"net/netip"
 	"net/url"
 	"slices"
-	"strconv"
 	"strings"
 	"time"
 
-	"github.com/miekg/dns"
 	"github.com/pridkett/marco/internal/auth"
 	"github.com/pridkett/marco/internal/config"
 	"github.com/pridkett/marco/internal/querylog"
@@ -106,25 +104,21 @@ func (s *server) managementHistory(ctx context.Context, _ auth.AccessToken, in h
 		len(in.Question) > 253 || len(in.Outcome) > 64 || (!in.After.IsZero() && !in.Until.IsZero() && !in.After.Before(in.Until)) {
 		return historyData{}, badInput("Check the history filters, time range, cursor, and limit.")
 	}
-	var qtype uint16
-	if in.Type != "" {
-		name := strings.ToUpper(strings.TrimSpace(in.Type))
-		qtype = dns.StringToType[name]
-		if numeric, ok := strings.CutPrefix(name, "TYPE"); ok {
-			value, _ := strconv.ParseUint(numeric, 10, 16)
-			qtype = uint16(value)
+	filter := querylog.Filter{
+		Client: strings.TrimSpace(in.Client), Question: in.Question, Outcome: in.Outcome,
+		After: in.After, Until: in.Until, BeforeID: in.Before, Limit: in.Limit,
+	}
+	if value := strings.TrimSpace(in.Type); value != "" {
+		qtype, ok := historyQuestionType(value)
+		if !ok {
+			return historyData{}, badInput("Enter a DNS type such as A, AAAA, HTTPS, or TYPE65400.")
 		}
-		if qtype == 0 {
-			return historyData{}, badInput("Enter a DNS query type such as A, AAAA, PTR, or HTTPS.")
-		}
+		filter.Type = &qtype
 	}
 	if s.history == nil {
 		return historyData{Entries: []querylog.Entry{}}, nil
 	}
-	page, err := s.history.Search(ctx, querylog.Filter{
-		Client: strings.TrimSpace(in.Client), Question: in.Question, Outcome: in.Outcome,
-		Type: qtype, After: in.After, Until: in.Until, BeforeID: in.Before, Limit: in.Limit,
-	})
+	page, err := s.history.Search(ctx, filter)
 	if err != nil {
 		slog.Warn("could not read management query history", "error", err)
 		return historyData{}, unavailable("Query history is temporarily unavailable.")

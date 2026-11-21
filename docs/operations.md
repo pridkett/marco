@@ -77,6 +77,8 @@ The device, Local DNS, policy, blocklist, upstream pool, and portable settings f
 
 The dashboard defaults to 24 hours and also offers 15-minute and 1-hour views. When query history is enabled, Marco restores recent traffic counts from retained history at startup and displays client and domain rankings. Select a ranked client or domain to open the corresponding query log filter. When query history is disabled, the chart and summary counts cover only the current run.
 
+In the Query Log, click a row to expand or collapse its details. Use the Type filter for an exact DNS question type such as `A`, `AAAA`, `HTTPS`, or `TYPE65400`. Older matching rows load as you scroll to the bottom. The Older queries link also lets you continue manually.
+
 SQLite may use temporary files when grouping larger sets of history. Marco's container image provides a writable `/tmp`. With a read-only container root filesystem, mount a writable `/tmp` for dashboard rankings and startup counter restoration.
 
 Use **Pause blocking** to suspend blocklists, service blocks, and manual domain denies on this Marco instance. DNS source admission, client deny-all and local-only modes, local DNS publication rules, and any upstream provider filtering still apply. The dashboard shows the remaining time and scheduled resume time for a timed pause. Choose **Indefinite** to keep domain filtering paused until you select **Resume blocking**. Both types of pause survive a Marco restart.

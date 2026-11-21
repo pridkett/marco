@@ -110,7 +110,7 @@ func New(authentication *auth.Manager, history *querylog.Log, hooks Hooks) http.
 		}
 		http.ServeFileFS(w, r, assets, adminCSSFile)
 	}))
-	for _, file := range []string{"assets/dashboard.js", "assets/service-filter.js", "assets/json-editor.js"} {
+	for _, file := range []string{"assets/dashboard.js", "assets/service-filter.js", "assets/json-editor.js", "assets/query-log.js"} {
 		mux.HandleFunc("GET /"+file, s.secure(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
 			http.ServeFileFS(w, r, assets, file)
@@ -206,10 +206,10 @@ func (s *server) secure(next http.HandlerFunc) http.HandlerFunc {
 			imageSources += " " + unifiArtworkOrigin
 		}
 		csp := "default-src 'none'; style-src 'self'; img-src " + imageSources + "; base-uri 'none'; frame-ancestors 'none'; form-action 'self' https:"
-		if r.URL.Path == "/" || r.URL.Path == "/blocking" {
+		if r.URL.Path == "/" || r.URL.Path == "/blocking" || r.URL.Path == "/query-log" {
 			csp += "; connect-src 'self'"
 		}
-		if r.URL.Path == "/blocking" || r.URL.Path == "/services/filter" || hasJSONEditor(r.URL.Path) {
+		if r.URL.Path == "/blocking" || r.URL.Path == "/services/filter" || r.URL.Path == "/query-log" || hasJSONEditor(r.URL.Path) {
 			csp += "; script-src 'self'"
 		}
 		w.Header().Set("Content-Security-Policy", csp)
