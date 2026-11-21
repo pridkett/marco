@@ -64,7 +64,7 @@ type importer struct {
 }
 
 func Build(state *config.State, options Options) (Report, error) {
-	p := &importer{State: state, options: options, report: Report{Base: state.Revision},
+	p := &importer{State: state, options: options, report: Report{Base: state.Generation},
 		byOwner: map[string][]config.Record{}, aliases: map[string]string{}}
 	if err := p.importAll(); err != nil {
 		return p.report, err

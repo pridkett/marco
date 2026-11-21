@@ -259,6 +259,9 @@ tr:last-child > td, tr:last-child > th { border-bottom: 0; }
 .service-policy-header h2 { margin: .15rem 0; font-size: 1.38rem; overflow-wrap: anywhere; }
 .service-policy-header p, .service-save p { margin: 0; font-size: .88rem; }
 .service-policy-note { background: var(--query-blocked-bg); color: var(--query-blocked); }
+.service-review-grid { display: grid; gap: 1rem; margin-bottom: 1rem; grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr)); }
+.service-review h2 { margin-bottom: .35rem; }
+.service-review ul { columns: 12rem; overflow-wrap: anywhere; }
 .service-modes, .service-choices { min-width: 0; border: 0; padding: 0; margin: 0; }
 .service-modes { display: grid; gap: .65rem; grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr)); }
 .service-modes legend { padding: 0; margin-bottom: .5rem; font-size: .88rem; font-weight: 650; }

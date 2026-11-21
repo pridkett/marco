@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/netip"
 	"net/url"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -12,9 +13,160 @@ import (
 	"time"
 
 	"github.com/miekg/dns"
+	"github.com/pridkett/marco/internal/auth"
 	"github.com/pridkett/marco/internal/config"
+	"github.com/pridkett/marco/internal/contract"
 	"github.com/pridkett/marco/internal/policy"
+	"github.com/pridkett/marco/internal/runtime"
+	"github.com/pridkett/marco/internal/store"
 )
+
+var editBasePattern = regexp.MustCompile(`name="edit-base" value="([^"]+)"`)
+
+func TestServiceFilterConflictsOnlyWithRelevantSettings(t *testing.T) {
+	desired := config.Defaults()
+	desired.Services = map[string]config.Service{
+		"video": {Version: "1", Domains: []config.Rule{{Name: "video.example.test"}}},
+		"chat":  {Version: "1", Domains: []config.Rule{{Name: "chat.example.test"}}},
+	}
+	desired.Groups = map[string]config.Policy{"kids": {}, "trusted": {}}
+	desired.Devices = map[string]config.DeviceSettings{"cam-01": {Group: "kids"}}
+	desired.Subscriptions = map[string]config.Subscription{"fixture": {Enabled: true, File: "list.txt"}}
+	db, err := store.Open(t.Context(), t.TempDir(), desired)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	pub, err := runtime.Open(t.Context(), db, func(s *config.State, _ *contract.View) (*contract.View, error) {
+		engine, err := policy.Compile(s, nil)
+		return &contract.View{Policies: engine}, err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pub.Close()
+	password, err := auth.HashPassword([]byte("local recovery password"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager, err := auth.New(t.Context(), db, auth.Settings{
+		PublicURL: "https://marco.test", Username: "operator", PasswordHash: password,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := &fixture{handler: New(manager, nil, Hooks{Snapshot: pub.Snapshot, Revision: pub.Revision, Update: pub.Update})}
+	f.login(t)
+	const path = "/services/filter"
+	formFor := func(target string) url.Values {
+		t.Helper()
+		page := request(f.handler, "GET", path+"?target="+url.QueryEscape(target), nil, f.cookie)
+		checkContent(t, page, "Save service blocks")
+		return url.Values{
+			"csrf": {f.csrf}, "revision": {strconv.FormatUint(pub.Revision(), 10)},
+			"target": {target}, "mode": {"custom"}, "edit-base": {editBase(page.Body.String())},
+		}
+	}
+	groupA, groupB := formFor("group:kids"), formFor("group:kids")
+	deviceA := formFor("device:cam-01")
+	// Inventory and blocklist refreshes and a different group's policy are unrelated.
+	for i := range 3 {
+		if _, err := pub.Update(t.Context(), 0, func(s *config.State) error {
+			s.SitePolls = map[string]time.Time{"fixture/site": time.Now().UTC().Add(time.Duration(i) * time.Minute)}
+			return nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := pub.Update(t.Context(), 0, func(s *config.State) error {
+		s.Artifacts["fixture"] = config.Artifact{Source: desired.Subscriptions["fixture"], Digest: "new-list",
+			Body: []byte("blocked.example.test\n")}
+		s.Desired.Groups["trusted"] = config.Policy{Mode: config.Unfiltered}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	groupA["service"] = []string{"video"}
+	if got := request(f.handler, "POST", path, groupA, f.cookie); got.Code != http.StatusSeeOther {
+		t.Errorf("unrelated changes blocked a service save: HTTP %d", got.Code)
+	}
+	groupB["service"] = []string{"chat"}
+	conflict := request(f.handler, "POST", path, groupB, f.cookie)
+	for _, want := range []string{"Current service blocks", "Save reviewed selection", "video", "chat"} {
+		if !strings.Contains(conflict.Body.String(), want) {
+			t.Errorf("service conflict page missing %q", want)
+		}
+	}
+	if conflict.Code != http.StatusConflict || !slices.Equal(serviceIDs(pub.Snapshot().Desired.Groups["kids"].Services), []string{"video"}) {
+		t.Fatalf("stale group edit overwrote the current policy: HTTP %d", conflict.Code)
+	}
+	// A device inheriting this group opened its draft before the inherited list changed.
+	if got := request(f.handler, "POST", path, deviceA, f.cookie); got.Code != http.StatusConflict {
+		t.Errorf("changed inherited selection should require review: HTTP %d", got.Code)
+	}
+	groupB.Set("edit-base", editBase(conflict.Body.String()))
+	if got := request(f.handler, "POST", path, groupB, f.cookie); got.Code != http.StatusSeeOther ||
+		!slices.Equal(serviceIDs(pub.Snapshot().Desired.Groups["kids"].Services), []string{"chat"}) {
+		t.Fatalf("review could not save the preserved draft: HTTP %d", got.Code)
+	}
+
+	first, second := formFor("group:kids"), formFor("group:kids")
+	first.Set("service", "video")
+	start, results := make(chan struct{}), make(chan int, 2)
+	for _, form := range []url.Values{first, second} {
+		go func() {
+			<-start
+			results <- request(f.handler, "POST", path, form, f.cookie).Code
+		}()
+	}
+	close(start)
+	codes := []int{<-results, <-results}
+	slices.Sort(codes)
+	if !slices.Equal(codes, []int{http.StatusSeeOther, http.StatusConflict}) {
+		t.Errorf("two simultaneous saves from the same baseline returned %v", codes)
+	}
+}
+
+func editBase(body string) string {
+	if match := editBasePattern.FindStringSubmatch(body); match != nil {
+		return match[1]
+	}
+	return ""
+}
+
+func TestSettingsEditorsCompareTheirOwnFields(t *testing.T) {
+	f := setup(t)
+	f.login(t)
+	read := func(path, action string) url.Values {
+		t.Helper()
+		page := request(f.handler, "GET", path, nil, f.cookie)
+		_, form, _ := strings.Cut(page.Body.String(), `action="`+action+`"`)
+		form, _, _ = strings.Cut(form, "</form>")
+		return url.Values{"csrf": {f.csrf}, "revision": {strconv.FormatUint(f.state.Revision, 10)}, "edit-base": {editBase(form)}}
+	}
+	device := read("/devices/edit?id=cam-01", "/devices/edit")
+	device.Set("id", "cam-01")
+	device.Set("settings", `{"group":"IoT","unpublish":true}`)
+	subscription := read("/blocklists", "/blocklists/toggle")
+	subscription.Set("id", "fixture")
+	subscription.Set("enabled", "false")
+	settingsImport := read("/settings", "/settings/import")
+	settingsImport.Set("settings", `{"version":1}`)
+	f.state.Desired.Default.Mode = config.Unfiltered
+	f.state.Revision++
+	if got := request(f.handler, "POST", "/devices/edit", device, f.cookie); got.Code != http.StatusSeeOther {
+		t.Errorf("unrelated default policy edit blocked the device save: HTTP %d", got.Code)
+	}
+	if got := request(f.handler, "POST", "/blocklists/toggle", subscription, f.cookie); got.Code != http.StatusSeeOther {
+		t.Errorf("unrelated device edit blocked the subscription toggle: HTTP %d", got.Code)
+	}
+	if got := request(f.handler, "POST", "/devices/edit", device, f.cookie); got.Code != http.StatusConflict {
+		t.Errorf("stale device edit returned HTTP %d", got.Code)
+	}
+	if got := request(f.handler, "POST", "/settings/import", settingsImport, f.cookie); got.Code != http.StatusConflict {
+		t.Errorf("would overwrite desired settings with a stale import: HTTP %d", got.Code)
+	}
+}
 
 func TestServiceFilterGroupAndDevice(t *testing.T) {
 	catalog, err := config.LoadServiceCatalog("../../catalog/services.json")

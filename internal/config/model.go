@@ -157,10 +157,11 @@ type Artifact struct {
 }
 
 type State struct {
-	Imports   map[string]time.Time `json:"imports,omitempty"`
-	Revision  uint64               `json:"revision"`
-	Desired   Desired              `json:"desired"`
-	Devices   map[string]Device    `json:"devices,omitempty"`
-	SitePolls map[string]time.Time `json:"sitePolls,omitempty"`
-	Artifacts map[string]Artifact  `json:"artifacts,omitempty"`
+	Imports    map[string]time.Time `json:"imports,omitempty"`
+	Revision   uint64               `json:"revision"`
+	Generation uint64               `json:"-"` // SQLite write sequence, including freshness updates.
+	Desired    Desired              `json:"desired"`
+	Devices    map[string]Device    `json:"devices,omitempty"`
+	SitePolls  map[string]time.Time `json:"sitePolls,omitempty"`
+	Artifacts  map[string]Artifact  `json:"artifacts,omitempty"`
 }

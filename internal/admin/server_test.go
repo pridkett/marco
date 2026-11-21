@@ -22,6 +22,7 @@ import (
 	"github.com/pridkett/marco/internal/contract"
 	"github.com/pridkett/marco/internal/filter"
 	"github.com/pridkett/marco/internal/querylog"
+	"github.com/pridkett/marco/internal/store"
 )
 
 type testDB struct{ db *sql.DB }
@@ -184,8 +185,8 @@ func setupWithHooks(t *testing.T, configure func(*Hooks)) *fixture {
 			return map[string]any{"status": "reachable", "pool": pool}, nil
 		},
 		Update: func(_ context.Context, base uint64, change func(*config.State) error) (uint64, error) {
-			if base != fixture.state.Revision {
-				return fixture.state.Revision, fmt.Errorf("stale edit")
+			if base != 0 && base != fixture.state.Revision {
+				return fixture.state.Revision, store.ErrStale
 			}
 			if err := change(&fixture.state); err != nil {
 				return fixture.state.Revision, err

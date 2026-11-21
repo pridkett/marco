@@ -25,7 +25,7 @@ func migrateCommand(ctx context.Context, args []string, out io.Writer) error {
 	decisions := flags.String("disposition", "", "JSON with operator selections, retired aliases, and service/upstream mappings")
 	skip := flags.Bool("allow-unsupported", false, "explicitly accept the previewed unsupported items")
 	apply := flags.Bool("apply", false, "apply offline; omit to preview read-only")
-	base := flags.Uint64("base", 0, "base revision from the preview, required for --apply")
+	base := flags.Uint64("base", 0, "base value from the preview, required for --apply")
 	d, err := loadDeployment(flags, file, args)
 	if err != nil {
 		return err
@@ -42,7 +42,7 @@ func migrateCommand(ctx context.Context, args []string, out io.Writer) error {
 	}
 	if *apply {
 		if *base == 0 {
-			return errors.New("applying an import requires the --base revision from its preview")
+			return errors.New("applying an import requires the --base value from its preview")
 		}
 		lock, err := store.Lock(d.DataDir)
 		if err != nil {
@@ -54,8 +54,8 @@ func migrateCommand(ctx context.Context, args []string, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	if *apply && *base != candidate.Revision {
-		return fmt.Errorf("%w: current revision is %d", store.ErrStale, candidate.Revision)
+	if *apply && *base != candidate.Generation {
+		return fmt.Errorf("%w: preview base is now %d", store.ErrStale, candidate.Generation)
 	}
 	identity, err := migrate.Fingerprint(options)
 	if err != nil {
@@ -63,7 +63,7 @@ func migrateCommand(ctx context.Context, args []string, out io.Writer) error {
 	}
 	var report migrate.Report
 	if _, exists := candidate.Imports[identity]; exists {
-		report = migrate.Report{Base: candidate.Revision, Staged: migrate.Staged(&candidate), Warnings: []migrate.Item{
+		report = migrate.Report{Base: candidate.Generation, Staged: migrate.Staged(&candidate), Warnings: []migrate.Item{
 			{Source: "migration", Detail: "this input and disposition were already applied; kept current settings"},
 		}}
 		if *apply {
@@ -114,7 +114,10 @@ func migrateCommand(ctx context.Context, args []string, out io.Writer) error {
 		return err
 	}
 	defer publisher.Close()
-	report.Applied, err = publisher.Update(ctx, *base, func(state *config.State) error {
+	report.Applied, err = publisher.Update(ctx, 0, func(state *config.State) error {
+		if state.Generation != *base {
+			return fmt.Errorf("%w: preview base is now %d", store.ErrStale, state.Generation)
+		}
 		if candidate.Imports == nil {
 			candidate.Imports = make(map[string]time.Time)
 		}

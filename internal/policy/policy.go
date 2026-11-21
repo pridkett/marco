@@ -118,15 +118,9 @@ func Compile(state *config.State, previous *Engine) (*Engine, error) {
 				}
 				e.reassigned[ip][e.identity(id)] = true
 			}
-			if !device.Connected || device.Legacy || device.LastPoll.IsZero() ||
-				!addr.Active || addr.Superseded || addr.LastSeen.IsZero() {
-				continue
+			if at := inventory.SourceBindingTime(device, addr); !at.IsZero() {
+				e.bindings[ip] = append(e.bindings[ip], binding{id: id, at: at, valid: at.Add(SourceMaxAge), conflicted: addr.Conflicted})
 			}
-			at := addr.LastSeen
-			if device.LastPoll.Before(at) {
-				at = device.LastPoll
-			}
-			e.bindings[ip] = append(e.bindings[ip], binding{id: id, at: at, valid: at.Add(SourceMaxAge), conflicted: addr.Conflicted})
 		}
 	}
 	for _, name := range slices.Sorted(maps.Keys(c.Services)) {

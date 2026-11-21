@@ -58,6 +58,10 @@ type feedback struct {
 	SettingsImport string
 	StaleBase      *uint64
 	ServiceEdit    *serviceFilterEdit
+	Operation      string
+	EditBase       string
+	Conflict       bool
+	ServiceReview  bool
 }
 
 type settingsInputError string
@@ -76,7 +80,8 @@ func (s *server) edit(w http.ResponseWriter, r *http.Request, session auth.Sessi
 		return
 	}
 	form := r.PostForm
-	draft := feedback{Draft: form.Get("settings"), DeviceID: visible(form.Get("id"))}
+	draft := feedback{Draft: form.Get("settings"), DeviceID: visible(form.Get("id")),
+		Operation: operation, EditBase: form.Get("edit-base")}
 	if operation == "edit-device" && form.Get("group-picker") == "1" {
 		group := form.Get("group")
 		draft.DeviceGroup = &group
@@ -90,15 +95,20 @@ func (s *server) edit(w http.ResponseWriter, r *http.Request, session auth.Sessi
 	if operation == "edit-service-filter" {
 		draft.ServiceEdit = &serviceFilterEdit{form.Get("target"), form.Get("mode"), form["service"]}
 	}
+	target, mode := draft.DeviceID, ""
+	if draft.ServiceEdit != nil {
+		target, mode = draft.ServiceEdit.Target, draft.ServiceEdit.Mode
+	} else if operation == "toggle-list" {
+		target = form.Get("id")
+	}
+	additive := operation == "add-default-groups" || operation == "add-default-lists" ||
+		operation == "create-group" || (operation == "edit-device" && form.Get("create") == "1")
 	base, err := strconv.ParseUint(form.Get("revision"), 10, 64)
 	status := http.StatusBadRequest
 	current := s.revision()
 	var audit *store.ChangeAudit
 	if err != nil || base == 0 {
 		err = errors.New("A valid base revision is required.")
-	} else if base != current {
-		status = http.StatusConflict
-		err = conflict(base, current)
 	} else if s.hooks.Update == nil {
 		status = http.StatusServiceUnavailable
 		err = errors.New("Settings are currently read-only.")
@@ -112,11 +122,32 @@ func (s *server) edit(w http.ResponseWriter, r *http.Request, session auth.Sessi
 		if err == nil {
 			ctx, changeAudit := store.WithChangeAudit(r.Context(), session.Account, operation)
 			audit = changeAudit
-			current, err = s.hooks.Update(ctx, base, change)
+			switch {
+			case additive:
+				current, err = s.hooks.Update(ctx, 0, change)
+			case draft.EditBase != "":
+				current, err = s.hooks.Update(ctx, 0, func(candidate *config.State) error {
+					if !editBaseMatches(*candidate, operation, target, draft.EditBase, mode) {
+						return errEditConflict
+					}
+					return change(candidate)
+				})
+			default:
+				// Forms opened before the upgrade can still use their original revision.
+				current, err = s.hooks.Update(ctx, base, change)
+			}
 			switch {
 			case errors.Is(err, store.ErrBusy):
 				status, err = http.StatusServiceUnavailable, errors.New("Marco is busy. Try the edit again.")
-			case err != nil && (errors.Is(err, store.ErrStale) || current != base):
+			case errors.Is(err, errEditConflict):
+				status = http.StatusConflict
+				draft.ServiceReview = draft.ServiceEdit != nil
+				if draft.ServiceReview {
+					err = errors.New("The service policy changed while you were editing. Review the current blocks and your selection below.")
+				} else {
+					err = errors.New("These settings changed while you were editing. Copy your edits, then reload the current settings.")
+				}
+			case errors.Is(err, store.ErrStale):
 				status, err = http.StatusConflict, conflict(base, current)
 			case err != nil && (draft.ServiceEdit != nil || operation == "create-group"):
 				var invalid settingsInputError
@@ -134,6 +165,7 @@ func (s *server) edit(w http.ResponseWriter, r *http.Request, session auth.Sessi
 		}
 		if status == http.StatusConflict {
 			result = "stale"
+			draft.Conflict = true
 		}
 		s.audit(r, session.Account, operation, result, current)
 		draft.Error = err.Error()

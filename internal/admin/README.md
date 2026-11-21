@@ -28,11 +28,17 @@ and `/readyz` reports overall DNS listener readiness.
 ## Forms and settings
 
 Update actions read URL-encoded forms and use the `csrf` value embedded in
-the page. Persistent settings edits also require the displayed `revision`
-and return `X-Marco-Revision` with the applied revision. Stale submissions
-return HTTP 409 and preserve the submitted revision. Copy edits out before
-reloading the current settings. JSON editors validate the object and affected
-DNS view before publication.
+the page. Settings forms send the displayed `revision` and, when replacing
+existing settings, an `edit-base` value for the fields the form edits. The
+comparison runs against the latest state in the same update that applies
+the change. Forms with only a revision use the instance-wide revision check.
+Additive actions check names and existing settings inside the update.
+Successful saves return the applied revision in `X-Marco-Revision`.
+
+Conflicting edits return HTTP 409. The service editor shows the current
+selection and preserves the submitted draft for review. Other editors
+preserve the submitted values so they can be copied before reloading.
+JSON editors validate the object and affected DNS view before publication.
 
 | POST path | Additional form fields |
 | --- | --- |
@@ -60,6 +66,6 @@ from empty arrays. Omission inherits the selection and an empty array clears
 it for that scope.
 
 Use the Device group picker to assign or clear a group. The console provides
-revision-checked forms at `POST /policies/defaults` and
+forms at `POST /policies/defaults` and
 `POST /blocklists/defaults` for adding the starter groups and subscriptions
 to an existing instance. Existing policies and list selections retain their settings.

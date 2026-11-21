@@ -8,6 +8,7 @@ import (
 	"maps"
 	"reflect"
 	"sync/atomic"
+	"time"
 
 	"github.com/pridkett/marco/internal/config"
 	"github.com/pridkett/marco/internal/contract"
@@ -60,7 +61,8 @@ func (p *Publisher) Snapshot() config.State {
 	return state
 }
 
-// Update uses base=0 only for transactional workers. External callers must send their base revision.
+// A nonzero base checks the applied revision. With base zero, the callback checks any
+// precondition against the latest candidate while holding the publication lock.
 // Artifact bodies are immutable. A change replaces an entire artifact instead of editing its bytes.
 func (p *Publisher) Update(ctx context.Context, base uint64, change func(*config.State) error) (uint64, error) {
 	select {
@@ -86,10 +88,14 @@ func (p *Publisher) Update(ctx context.Context, base uint64, change func(*config
 	if err := change(&next); err != nil {
 		return old.state.Revision, err
 	}
+	next.Revision, next.Generation = old.state.Revision, old.state.Generation
 	if reflect.DeepEqual(old.state, next) {
 		return old.state.Revision, nil
 	}
-	next.Revision = old.state.Revision + 1
+	next.Generation++
+	if appliedStateChanged(old.state, next, time.Now()) {
+		next.Revision++
+	}
 	view, err := p.build(&next, old.view)
 	if err != nil {
 		return old.state.Revision, err
@@ -122,6 +128,7 @@ func clone(state config.State) (config.State, error) {
 		return config.State{}, err
 	}
 	copy.Artifacts = artifacts
+	copy.Generation = state.Generation
 	return copy, nil
 }
 

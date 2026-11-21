@@ -277,6 +277,18 @@ func currentlyClaimed(device config.Device, address config.Address, now time.Tim
 		now.Sub(address.LastSeen) <= SourceMaxAge && now.Sub(device.LastPoll) <= SourceMaxAge
 }
 
+// SourceBindingTime returns the timestamp used to establish and expire a DNS client binding.
+func SourceBindingTime(device config.Device, address config.Address) time.Time {
+	if !device.Connected || device.Legacy || device.LastPoll.IsZero() ||
+		!address.Active || address.Superseded || address.LastSeen.IsZero() {
+		return time.Time{}
+	}
+	if device.LastPoll.Before(address.LastSeen) {
+		return device.LastPoll
+	}
+	return address.LastSeen
+}
+
 func reconcileOwnership(state *config.State, now time.Time) error {
 	links, err := LinkTargets(state)
 	if err != nil {

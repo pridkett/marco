@@ -24,8 +24,25 @@
   {{end}}
 </section>
 {{if .Name}}
+{{if $.Feedback.ServiceReview}}
+<section class="panel section service-review" aria-labelledby="service-review-heading">
+  <div class="service-review-grid">
+    <div>
+      <h2 id="service-review-heading">Current service blocks</h2>
+      {{template "service-review-list" .CurrentBlocks}}
+      {{if .CurrentInherits}}<p class="muted">Inherited selection.</p>{{end}}
+    </div>
+    <div>
+      <h2>Your submitted draft</h2>
+      {{if .Custom}}{{template "service-review-list" .DraftBlocks}}{{else}}<p>Use the current inherited selection.</p>{{end}}
+    </div>
+  </div>
+  <p>Review or adjust your selection below before saving.</p>
+</section>
+{{end}}
 <form method="post" action="/services/filter" data-service-editor>
   {{template "revision-fields" $}}
+  {{template "edit-base" $.EditBase}}
   <input type="hidden" name="target" value="{{.Target}}">
   <section class="panel section service-policy" aria-labelledby="service-policy-heading">
     <header class="service-policy-header">
@@ -92,11 +109,15 @@
     <p aria-live="polite" data-service-summary><strong>{{.Selected}}</strong> of {{len .Cards}} services blocked{{if not .Custom}} by inheritance{{end}}.</p>
     <div class="toolbar">
       <a class="button" href="{{serviceFilterURL .Target}}">Reset edits</a>
-      <button type="submit" class="button primary">Save service blocks</button>
+      <button type="submit" class="button primary">{{if $.Feedback.ServiceReview}}Save reviewed selection{{else}}Save service blocks{{end}}</button>
     </div>
   </div>
 </form>
 <script src="/assets/service-filter.js" defer></script>
 {{end}}
 {{end}}
+{{end}}
+
+{{define "service-review-list"}}
+{{if .}}<ul>{{range .}}<li>{{.}}</li>{{end}}</ul>{{else}}<p>No services selected.</p>{{end}}
 {{end}}

@@ -37,7 +37,7 @@ func TestBlockingPausePersistsAndExpires(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Opening a version-one database must retain its configuration and start active.
-	if _, err := db.DB().ExecContext(ctx, "DROP TABLE blocking_pause; PRAGMA user_version=1;"); err != nil {
+	if _, err := db.DB().ExecContext(ctx, "ALTER TABLE dns_state DROP COLUMN generation; DROP TABLE blocking_pause; PRAGMA user_version=1;"); err != nil {
 		t.Fatal(err)
 	}
 	db = open()

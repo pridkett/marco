@@ -96,6 +96,11 @@ func TestPublicationSurvivesFailedUpdatesAndRestart(t *testing.T) {
 	refresh("")
 	assertBlocked(p, "old.test.", true)
 	good := p.Revision()
+	lastGood := worker.Status()[0].LastGood
+	refresh("")
+	if p.Revision() != good || !worker.Status()[0].LastGood.After(lastGood) {
+		t.Fatalf("identical download should update refresh time at revision %d, got %+v", good, worker.Status()[0])
+	}
 	if err := os.Remove(path); err != nil {
 		t.Fatal(err)
 	}
@@ -195,6 +200,76 @@ func TestPublicationSurvivesFailedUpdatesAndRestart(t *testing.T) {
 	assertBlocked(p, "new.test.", false)
 	if artifact := p.Snapshot().Artifacts["fixture"]; artifact.Digest == "" || artifact.RuleCount != 0 {
 		t.Fatalf("explicitly empty artifact not saved: %+v", artifact)
+	}
+}
+
+func TestInventoryFreshnessAndAppliedRevision(t *testing.T) {
+	ctx := t.Context()
+	db, err := store.Open(ctx, t.TempDir(), config.Defaults())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	compile, err := newCompiler(config.Deployment{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, err := runtime.Open(ctx, db, compile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer p.Close()
+
+	at := time.Now().UTC().Truncate(time.Second)
+	ip := netip.MustParseAddr("192.0.2.41")
+	row := inventory.Observation{
+		MAC: "02:00:00:00:00:01", Reported: "Fixture tablet", Present: true,
+		UseObservationTime: true, CompleteIPv4: true, Addresses: []netip.Addr{ip},
+	}
+	poll := func(when time.Time, rows ...inventory.Observation) uint64 {
+		t.Helper()
+		rev, err := p.Update(ctx, 0, func(s *config.State) error {
+			return inventory.Reconcile(s, inventory.Snapshot{
+				Controller: "test", Site: "home", ObservedAt: when, Complete: true, Observations: rows,
+			})
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return rev
+	}
+	if first, second := poll(at.Add(-3*time.Minute)), poll(at.Add(-2*time.Minute)); first != 1 || second != 1 {
+		t.Errorf("polls of an unchanged empty site published revisions %d and %d", first, second)
+	}
+	if got := poll(at.Add(-time.Minute), row); got != 2 {
+		t.Errorf("new host should advance the revision once, got %d", got)
+	}
+	id := p.View().Policies.Select(ip, at).Device
+	if id == "" {
+		t.Fatal("host did not acquire a source identity")
+	}
+	if got := poll(at, row); got != 2 {
+		t.Errorf("freshness renewal advanced the revision to %d", got)
+	}
+	// Sample after the first observation would have expired and before its renewal expires.
+	later := at.Add(inventory.SourceMaxAge - 30*time.Second)
+	if got := p.View().Policies.Select(ip, later).Device; got != id {
+		t.Errorf("quiet poll did not renew source identity: %q", got)
+	}
+	state, err := db.Load(ctx)
+	if err != nil || state.Revision != 2 || !state.SitePolls["test/home"].Equal(at) ||
+		!state.Devices[id].LastPoll.Equal(at) {
+		t.Errorf("quiet poll metadata or revision was lost on disk: revision=%d poll=%v err=%v", state.Revision, state.SitePolls, err)
+	}
+	if got := poll(at, row); got != 2 || p.Snapshot().Generation != state.Generation {
+		t.Error("replaying the exact same poll should not write a new snapshot")
+	}
+	row.MAC, row.Reported = "02:00:00:00:00:02", "Fixture laptop"
+	if got := poll(at.Add(time.Second), row); got != 3 {
+		t.Errorf("reassignment should advance the revision, got %d", got)
+	}
+	if got := p.View().Policies.Select(ip, at.Add(time.Second)).Device; got == "" || got == id {
+		t.Errorf("reassigned address still uses the old identity: %q", got)
 	}
 }
 

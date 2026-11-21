@@ -124,13 +124,30 @@ func TestOfflineMigrationBackupAndRestore(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	revision, err := publisher.Update(ctx, 0, func(state *config.State) error {
+		state.SitePolls = map[string]time.Time{"fixture/home": time.Now().UTC()}
+		return nil
+	})
+	if err != nil || revision != 3 {
+		t.Fatalf("metadata write changed the applied revision to %d: %v", revision, err)
+	}
 	publisher.Close()
 	if err := manager.Close(); err != nil {
 		t.Fatal(err)
 	}
-	run(append(flags, "--apply", "--base", "3", "--allow-unsupported")...)
+	if preview := run(flags...); !strings.Contains(preview, `"baseRevision": 4`) {
+		t.Fatalf("migration preview did not include metadata writes in its base: %s", preview)
+	}
+	if err := command(ctx, append(flags, "--apply", "--base", "3", "--allow-unsupported"), &result); !errors.Is(err, store.ErrStale) {
+		t.Fatalf("migration accepted a stale base after a metadata write: %v", err)
+	}
+	run(append(flags, "--apply", "--base", "4", "--allow-unsupported")...)
 	if updated := run("export", "--config", deployment); strings.Contains(updated, "server-ui.split.test") {
 		t.Fatalf("re-import replaced an admin deletion: %s", updated)
+	}
+	inventory = run("export", "--config", deployment, "--inventory")
+	if !strings.Contains(inventory, "fixture/home") {
+		t.Fatal("re-import lost the latest inventory metadata")
 	}
 	backup := filepath.Join(dir, "backup")
 	run("backup", "--config", deployment, "--output", backup)

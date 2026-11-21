@@ -24,6 +24,8 @@ type serviceFilterPage struct {
 	Categories                  []string
 	Groups, Devices             []serviceFilterOption
 	Cards                       []serviceFilterCard
+	CurrentBlocks, DraftBlocks  []string
+	CurrentInherits             bool
 }
 
 type serviceFilterOption struct {
@@ -51,6 +53,45 @@ func serviceFilterPolicy(state config.State, target string) (config.Policy, bool
 		return d.Policy, configured || observed
 	}
 	return config.Policy{}, false
+}
+
+type serviceFilterScope struct {
+	Policy    config.Policy
+	Group     string
+	Mode      config.Mode
+	Inherited []string
+}
+
+func serviceScope(state config.State, target string) (serviceFilterScope, bool) {
+	current, ok := serviceFilterPolicy(state, target)
+	if !ok {
+		return serviceFilterScope{}, false
+	}
+	parent := state.Desired.Default
+	kind, id, _ := strings.Cut(target, ":")
+	var groupName string
+	if kind == "device" {
+		groupName = state.Desired.Devices[id].Group
+		group := state.Desired.Groups[groupName]
+		parent.Mode = cmp.Or(group.Mode, parent.Mode)
+		if group.Services != nil {
+			parent.Services = group.Services
+		}
+	}
+	inherited := serviceIDs(parent.Services)
+	if len(inherited) == 0 {
+		inherited = nil
+	}
+	return serviceFilterScope{current, groupName, cmp.Or(current.Mode, parent.Mode, config.Filtered), inherited}, true
+}
+
+func (scope serviceFilterScope) editBase(target string) string {
+	own := scopeDigest("edit-service-filter", target, struct {
+		Group    string
+		Mode     config.Mode
+		Services *[]string
+	}{scope.Group, scope.Mode, scope.Policy.Services})
+	return own + "." + scopeDigest("inherit-services", target, scope.Inherited)
 }
 
 func deviceFilterName(state config.State, id string) string {
@@ -88,34 +129,32 @@ func (s *server) serviceFilterPage(p *page, r *http.Request, state config.State,
 	if f.Target == "" {
 		return status
 	}
-	current, ok := serviceFilterPolicy(state, f.Target)
+	scope, ok := serviceScope(state, f.Target)
 	if !ok {
+		if p.Feedback.ServiceReview {
+			p.Feedback.Error = "The selected group or device no longer exists."
+		}
 		if status == http.StatusOK {
 			p.Feedback.Error = "The selected group or device no longer exists."
 			return http.StatusNotFound
 		}
 		return status
 	}
-	parent := state.Desired.Default
 	kind, id, _ := strings.Cut(f.Target, ":")
 	f.Name = id
 	if kind == "device" {
 		f.Device = id
 		f.Name = deviceFilterName(state, id)
-		f.Group = state.Desired.Devices[id].Group
-		group := state.Desired.Groups[f.Group]
-		parent.Mode = cmp.Or(group.Mode, parent.Mode)
-		if group.Services != nil {
-			parent.Services = group.Services
-		}
 	}
-	f.Mode = cmp.Or(current.Mode, parent.Mode, config.Filtered)
-	f.Custom = current.Services != nil
-	inherited := serviceIDs(parent.Services)
+	f.Group, f.Mode = scope.Group, scope.Mode
+	f.Custom = scope.Policy.Services != nil
+	inherited := scope.Inherited
 	selected := inherited
 	if f.Custom {
-		selected = *current.Services
+		selected = *scope.Policy.Services
 	}
+	active := selected
+	f.CurrentInherits = !f.Custom
 	if edit != nil && (edit.Mode == "custom" || edit.Mode == "inherit") {
 		f.Custom, selected = edit.Mode == "custom", edit.Services
 		if !f.Custom {
@@ -133,7 +172,15 @@ func (s *server) serviceFilterPage(p *page, r *http.Request, state config.State,
 		if item.Inherited {
 			f.Inherited++
 		}
+		if p.Feedback.ServiceReview && slices.Contains(active, id) {
+			f.CurrentBlocks = append(f.CurrentBlocks, card.Name)
+		}
+		if p.Feedback.ServiceReview && item.Selected {
+			f.DraftBlocks = append(f.DraftBlocks, card.Name)
+		}
 	}
+	slices.Sort(f.CurrentBlocks)
+	slices.Sort(f.DraftBlocks)
 	f.Categories = slices.Sorted(maps.Keys(categories))
 	slices.SortFunc(f.Cards, func(a, b serviceFilterCard) int { return compareServices(a.serviceCard, b.serviceCard) })
 	return status
