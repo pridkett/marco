@@ -41,6 +41,7 @@ var adminCSSVersion = func() string {
 
 var views = template.Must(template.New("").Funcs(template.FuncMap{
 	"stylesheet":       func() string { return adminCSSPath + "?v=" + adminCSSVersion },
+	"hasJSONEditor":    hasJSONEditor,
 	"when":             dateTime,
 	"age":              age,
 	"pretty":           pretty,
@@ -104,7 +105,7 @@ func New(authentication *auth.Manager, history *querylog.Log, hooks Hooks) http.
 		}
 		http.ServeFileFS(w, r, assets, adminCSSFile)
 	}))
-	for _, file := range []string{"assets/dashboard.js", "assets/service-filter.js"} {
+	for _, file := range []string{"assets/dashboard.js", "assets/service-filter.js", "assets/json-editor.js"} {
 		mux.HandleFunc("GET /"+file, s.secure(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
 			http.ServeFileFS(w, r, assets, file)
@@ -201,9 +202,9 @@ func (s *server) secure(next http.HandlerFunc) http.HandlerFunc {
 		}
 		csp := "default-src 'none'; style-src 'self'; img-src " + imageSources + "; base-uri 'none'; frame-ancestors 'none'; form-action 'self' https:"
 		if r.URL.Path == "/" || r.URL.Path == "/blocking" {
-			csp += "; script-src 'self'; connect-src 'self'"
+			csp += "; connect-src 'self'"
 		}
-		if r.URL.Path == "/services/filter" {
+		if r.URL.Path == "/blocking" || r.URL.Path == "/services/filter" || hasJSONEditor(r.URL.Path) {
 			csp += "; script-src 'self'"
 		}
 		w.Header().Set("Content-Security-Policy", csp)
@@ -218,6 +219,18 @@ func (s *server) secure(next http.HandlerFunc) http.HandlerFunc {
 		w.Header().Set("Strict-Transport-Security", "max-age=31536000")
 		next(w, r)
 	}
+}
+
+// Include action routes that re-render a console page with diagnostics or a draft.
+func hasJSONEditor(path string) bool {
+	switch path {
+	case "/", "/devices", "/devices/edit", "/devices/poll", "/local-dns",
+		"/policies", "/policies/defaults", "/policies/groups", "/policies/test",
+		"/blocklists", "/blocklists/defaults", "/blocklists/refresh", "/blocklists/test", "/blocklists/toggle",
+		"/settings", "/settings/import", "/settings/test-upstream", "/settings/upstreams":
+		return true
+	}
+	return false
 }
 
 type adminHandler func(http.ResponseWriter, *http.Request, auth.Session)
