@@ -46,6 +46,7 @@ type page struct {
 	ServiceFilter              serviceFilterPage
 	AliasStatus                map[string]string
 	EditText, PoolText         string
+	ForwardingText             string
 	EditBase, ImportBase       string
 	History                    []queryDay
 	HistoryClient, HistoryName string
@@ -191,8 +192,12 @@ func (s *server) page(w http.ResponseWriter, r *http.Request, session auth.Sessi
 			p.ImportBase = f.EditBase
 		}
 		p.PoolText = prettyObject(state.Desired.Pools)
+		p.ForwardingText = prettyObject(state.Desired.Forwarding)
 		if f.Endpoints != "" {
 			p.PoolText = f.Endpoints
+		}
+		if f.Forwarding != "" {
+			p.ForwardingText = f.Forwarding
 		}
 		if s.hooks.Status != nil {
 			p.Status = s.hooks.Status()

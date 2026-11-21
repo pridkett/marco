@@ -79,6 +79,28 @@ The device, Local DNS, policy, blocklist, upstream pool, and portable settings f
 
 The dashboard defaults to 24 hours and also offers 15-minute and 1-hour views. When query history is enabled, Marco restores recent traffic counts from retained history at startup and displays client and domain rankings. Select a ranked client or domain to open the corresponding query log filter. Rankings are calculated only while someone views the dashboard or asks the API, then reused for up to a minute. On small devices such as a Raspberry Pi, ranking a full day of history takes a few seconds. While newer rankings are being calculated, the dashboard shows the previous rankings with the time they cover. When there are none yet, for example just after Marco starts, it shows **Calculating query rankings**. The page replaces either with the new rankings when they are ready, without a reload. When query history is disabled, the chart and summary counts cover only the current run.
 
+### Conditional forwarding
+
+Map a DNS suffix to a named upstream pool to send queries for that name and its descendants to a dedicated resolver. Marco uses the most specific matching suffix, ignoring letter case and an optional trailing dot. It selects the pool after local DNS and policy checks, using the name it will send upstream, including the external target of a local CNAME. A query without a match uses its client policy's pool. When the matching pool is exhausted, Marco returns SERVFAIL and keeps the query within that pool.
+
+For Tailscale MagicDNS, merge this pool into the existing object in **Settings → Pools JSON**. Replace `example-tailnet.ts.net` in the forwarding example with your tailnet's DNS suffix. `100.100.100.100` is a device-local resolver, so the Marco process must be able to reach it from where it runs.
+
+```json
+{
+  "magicdns": [{"transport": "udp", "address": "100.100.100.100"}]
+}
+```
+
+Add the matching entry to **Settings → Forwarding JSON** and save upstreams. The same objects are available as `pools` and `forwarding` in portable settings. If you are adding a second pool to a configuration with an implicit default, select the existing resolver as `default.pool` under **Policies** first. Add these entries manually when migrating from AdGuard Home.
+
+```json
+{
+  "example-tailnet.ts.net": "magicdns"
+}
+```
+
+Plain endpoints use `"transport": "udp"` or `"transport": "tcp"` and default to port 53. Set `port` for a nonstandard port. A UDP endpoint retries a truncated reply over TCP at the same address and port. TCP endpoints send queries directly over TCP. Both transports send DNS messages without encryption.
+
 ### Upstream blocks
 
 Marco also notices when a filtering upstream resolver, such as NextDNS, blocks a query. It treats a reply as an upstream block when it carries an Extended DNS Error (RFC 8914) of Blocked, Censored, Filtered or Prohibited, or when every address in the answer is `0.0.0.0` or `::`. **Upstream blocks** on the dashboard counts these separately from **Policy blocks**, which are Marco's own blocklists, service blocks and manual denies. **Top upstream-blocked domains** ranks the names.

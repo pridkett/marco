@@ -102,7 +102,8 @@ func evaluate(ctx context.Context, view *contract.View, in contract.Input, query
 		query = query.Copy()
 		query.Question[0].Name = target
 	}
-	reply, hit, err := view.Upstream.Exchange(ctx, selected.Policy.Pool, query)
+	pool := forwardingPool(view.Forwarding, target, selected.Policy.Pool)
+	reply, hit, err := view.Upstream.Exchange(ctx, pool, query)
 	cache := "miss"
 	if hit {
 		cache = "hit"
@@ -150,6 +151,22 @@ func evaluate(ctx context.Context, view *contract.View, in contract.Input, query
 	}
 	resolved.message = reply
 	return selected, resolved
+}
+
+func forwardingPool(routes map[string]string, name, fallback string) string {
+	if len(routes) == 0 {
+		return fallback
+	}
+	for offset := 0; ; {
+		if pool, ok := routes[name[offset:]]; ok {
+			return pool
+		}
+		next, end := dns.NextLabel(name, offset)
+		if end {
+			return fallback
+		}
+		offset = next
+	}
 }
 
 func externalRule(policies contract.Policies, selection contract.Selection, in contract.Input, name string, manual contract.Decision) contract.Decision {

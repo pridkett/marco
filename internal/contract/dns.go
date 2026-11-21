@@ -94,10 +94,11 @@ type Upstream interface {
 }
 
 type View struct {
-	Revision uint64
-	Policies Policies
-	Local    Local
-	Upstream Upstream
+	Revision   uint64
+	Policies   Policies
+	Local      Local
+	Upstream   Upstream
+	Forwarding map[string]string // Canonical DNS suffixes mapped to upstream pools.
 }
 
 type Update func(ctx context.Context, base uint64, change func(*config.State) error) (uint64, error)

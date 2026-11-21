@@ -110,6 +110,7 @@ type Desired struct {
 	MultiplePTRs  bool                      `json:"multiplePTRs,omitempty"`
 	AutoRename    bool                      `json:"autoRename,omitempty"`
 	Pools         map[string][]Endpoint     `json:"pools,omitempty"`
+	Forwarding    map[string]string         `json:"forwarding,omitempty"`
 	Services      map[string]Service        `json:"services,omitempty"`
 	Subscriptions map[string]Subscription   `json:"subscriptions,omitempty"`
 }
