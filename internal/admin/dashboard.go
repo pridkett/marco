@@ -3,6 +3,8 @@ package admin
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -61,6 +63,12 @@ type dashboard struct {
 	HistoryURL   string
 	Rankings     []rankPanel
 	RankError    bool
+	// RankPending means the first rankings for this range are still being
+	// calculated. RankUpdating means the rankings shown are from RankAsOf and
+	// newer ones are being calculated. Either makes the page poll for them.
+	RankPending  bool
+	RankUpdating bool
+	RankAsOf     time.Time
 }
 
 type rankPanel struct {
@@ -114,10 +122,16 @@ func (s *server) dashboard(ctx context.Context, p *page, selected string, state 
 	ctx, cancel := context.WithTimeout(ctx, 750*time.Millisecond)
 	defer cancel()
 	top, err := s.history.TopQueries(ctx, start, now)
+	if errors.Is(err, querylog.ErrRankingsPending) {
+		d.RankPending = true
+		return
+	}
 	if err != nil {
+		slog.Warn("could not rank query history for the dashboard", "error", err)
 		d.RankError = true
 		return
 	}
+	d.RankUpdating, d.RankAsOf = top.Updating, top.AsOf
 	for _, group := range []struct {
 		title, label, key, outcome, empty string
 		entries                           []querylog.RankedEntry

@@ -38,6 +38,9 @@ type dashboardData struct {
 	Activity      []querylog.ActivityPoint `json:"activity"`
 	Rankings      *querylog.Rankings       `json:"rankings"`
 	RankingsError bool                     `json:"rankingsUnavailable"`
+	// RankingsPending means the first rankings for this range are still being
+	// calculated. Ask again in a few seconds.
+	RankingsPending bool `json:"rankingsPending,omitempty"`
 }
 
 func (s *server) managementDashboard(ctx context.Context, _ auth.AccessToken, in dashboardInput) (dashboardData, *managementError) {
@@ -69,7 +72,9 @@ func (s *server) managementDashboard(ctx context.Context, _ auth.AccessToken, in
 		ctx, cancel := context.WithTimeout(ctx, 750*time.Millisecond)
 		defer cancel()
 		rankings, err := s.history.TopQueries(ctx, result.Activity[0].Time, now)
-		if err != nil {
+		if errors.Is(err, querylog.ErrRankingsPending) {
+			result.RankingsError, result.RankingsPending = true, true
+		} else if err != nil {
 			slog.Warn("could not rank management query history", "error", err)
 			result.RankingsError = true
 		} else {

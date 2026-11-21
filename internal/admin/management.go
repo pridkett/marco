@@ -77,7 +77,9 @@ func (s *server) managementOperations() []operation {
 	defaultPage, maxPage := s.managementPageLimits()
 	return []operation{
 		managementOperation(http.MethodGet, "/dashboard", "get_dashboard",
-			"Get DNS counts, activity buckets, cache hit rate, blocking status, and top clients and domains. Defaults to 24h.",
+			"Get DNS counts, activity buckets, cache hit rate, blocking status, and top clients and domains. Defaults to 24h. "+
+				"Rankings are cached for a minute. rankings.asOf gives their time and rankings.updating means newer ones are being calculated. "+
+				"When rankingsPending is true, the first rankings are still being calculated, so ask again in a few seconds.",
 			objectSchema(dashboardSchema), nil, false, s.managementDashboard),
 		managementOperation(http.MethodGet, "/query-log", "search_query_log",
 			"Search retained DNS history, newest first. Pass next as before to fetch an older page with the same filters.",

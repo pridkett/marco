@@ -2,6 +2,7 @@ package querylog
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"time"
 
@@ -89,7 +90,16 @@ type Rankings struct {
 	Blocked []RankedEntry `json:"blocked"`
 	// UpstreamBlocked ranks names an upstream resolver blocked.
 	UpstreamBlocked []RankedEntry `json:"upstreamBlocked"`
+	// AsOf is the end of the window these rankings cover.
+	AsOf time.Time `json:"asOf"`
+	// Updating reports that these rankings are out of date and newer ones are
+	// being calculated.
+	Updating bool `json:"updating"`
 }
+
+// ErrRankingsPending reports that no rankings exist yet for a window and the
+// first calculation is still running.
+var ErrRankingsPending = errors.New("query rankings are still being calculated")
 
 const (
 	// rankingMaxAge is how long a window's rankings are reused before a
@@ -108,9 +118,11 @@ type rankingEntry struct {
 }
 
 // TopQueries ranks retained history between from and until. Results are cached
-// per window length for up to a minute. When a refresh outlasts ctx, the
-// refresh keeps running in the background and the previous result, if any, is
-// returned instead. Client keys have already passed through the query log's
+// per window length for up to a minute, and nothing is calculated unless a
+// caller asks. When a refresh outlasts ctx, it keeps running in the background
+// and the previous result is returned with Updating set, however old it is,
+// since AsOf tells the reader its age. With no previous result, the error is
+// ErrRankingsPending. Client keys have already passed through the query log's
 // configured anonymization before reaching this query.
 func (l *Log) TopQueries(ctx context.Context, from, until time.Time) (Rankings, error) {
 	if !l.settings.Enabled {
@@ -143,15 +155,15 @@ func (l *Log) TopQueries(ctx context.Context, from, until time.Time) (Rankings, 
 	}
 	l.rankMu.Lock()
 	defer l.rankMu.Unlock()
-	// Serve the previous result while a refresh runs, unless it is too old to
-	// describe the window, such as an hour-old ranking of the last 15 minutes.
-	if !entry.until.IsZero() && until.Sub(entry.until) < max(window/4, 2*rankingMaxAge) {
-		return entry.result, nil
+	if !entry.until.IsZero() {
+		result := entry.result
+		result.Updating = entry.pending != nil
+		return result, nil
 	}
-	if entry.err != nil {
-		return Rankings{}, entry.err
+	if entry.pending != nil {
+		return Rankings{}, ErrRankingsPending
 	}
-	return Rankings{}, ctx.Err()
+	return Rankings{}, entry.err
 }
 
 func (l *Log) refreshRankings(entry *rankingEntry, from, until time.Time) {
@@ -167,6 +179,7 @@ func (l *Log) refreshRankings(entry *rankingEntry, from, until time.Time) {
 	l.rankMu.Lock()
 	defer l.rankMu.Unlock()
 	if err == nil {
+		result.AsOf = until
 		entry.result, entry.until, entry.err = result, until, nil
 	} else {
 		entry.err = err

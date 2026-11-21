@@ -199,30 +199,29 @@ func TestSlowRankingsFinishAfterTheCallerGivesUp(t *testing.T) {
 		return l.TopQueries(ctx, until.Add(-15*time.Minute), until)
 	}
 
-	if _, err := impatient(now); !errors.Is(err, context.DeadlineExceeded) {
-		t.Fatalf("cold rankings returned %v, want the caller's deadline", err)
+	if _, err := impatient(now); !errors.Is(err, ErrRankingsPending) {
+		t.Fatalf("cold rankings returned %v, want ErrRankingsPending", err)
 	}
-	if _, err := impatient(now); !errors.Is(err, context.DeadlineExceeded) || refreshes.Load() != 1 {
+	if _, err := impatient(now); !errors.Is(err, ErrRankingsPending) || refreshes.Load() != 1 {
 		t.Fatalf("second caller did not join the running refresh: %v, %d refreshes", err, refreshes.Load())
 	}
 	close(release)
 	top, err := l.TopQueries(t.Context(), now.Add(-15*time.Minute), now)
-	if err != nil || len(top.Blocked) != 1 || top.Blocked[0].Value != "slow.test." {
+	if err != nil || len(top.Blocked) != 1 || top.Blocked[0].Value != "slow.test." || top.Updating || !top.AsOf.Equal(now) {
 		t.Fatalf("finished refresh was not served: %+v %v", top, err)
 	}
-	if _, err := impatient(now.Add(30 * time.Second)); err != nil || refreshes.Load() != 1 {
-		t.Fatalf("fresh rankings were not reused: %v, %d refreshes", err, refreshes.Load())
+	if top, err := impatient(now.Add(10 * time.Second)); err != nil || top.Updating || refreshes.Load() != 1 {
+		t.Fatalf("fresh rankings were not reused: %+v %v, %d refreshes", top, err, refreshes.Load())
 	}
 
+	// Old rankings, however old, are served with their time while newer ones are calculated.
 	release = make(chan struct{})
 	defer close(release)
-	stale, err := impatient(now.Add(2 * time.Minute))
-	if err != nil || len(stale.Blocked) != 1 || refreshes.Load() != 2 {
-		t.Fatalf("stale rankings were not served during a refresh: %+v %v, %d refreshes", stale, err, refreshes.Load())
-	}
-	// A 15-minute ranking from an hour ago no longer describes the window.
-	if _, err := impatient(now.Add(time.Hour)); !errors.Is(err, context.DeadlineExceeded) {
-		t.Fatalf("hour-old rankings were served for a 15-minute window: %v", err)
+	for _, later := range []time.Duration{2 * time.Minute, time.Hour} {
+		stale, err := impatient(now.Add(later))
+		if err != nil || len(stale.Blocked) != 1 || !stale.Updating || !stale.AsOf.Equal(now) || refreshes.Load() != 2 {
+			t.Fatalf("rankings %v old were not served during a refresh: %+v %v, %d refreshes", later, stale, err, refreshes.Load())
+		}
 	}
 }
 

@@ -89,7 +89,7 @@
   </div>
 </section>
 
-<section aria-labelledby="rankings-title">
+<section aria-labelledby="rankings-title" data-rankings {{if or $dashboard.RankPending $dashboard.RankUpdating}}data-rankings-updating{{end}}>
   <div class="dashboard-heading">
     <h2 id="rankings-title">Query rankings</h2>
     {{with $dashboard.HistoryURL}}<a href="{{.}}" class="button">Open query log</a>{{end}}
@@ -98,7 +98,12 @@
   <p class="panel dashboard-note muted">Query history must be enabled to rank clients and domains.</p>
   {{else if $dashboard.RankError}}
   <p class="panel dashboard-note error-text">Query rankings are temporarily unavailable.</p>
+  {{else if $dashboard.RankPending}}
+  <p class="panel dashboard-note muted" role="status" data-rankings-status>Calculating query rankings. They appear here when ready.</p>
   {{else}}
+  {{if $dashboard.RankUpdating}}
+  <p class="dashboard-note muted ranking-freshness" role="status" data-rankings-status>Rankings as of <time datetime="{{$dashboard.RankAsOf.UTC.Format "2006-01-02T15:04:05Z"}}">{{$dashboard.RankAsOf.UTC.Format "Jan 2, 15:04"}} UTC</time>. Updating now.</p>
+  {{end}}
   <div class="dashboard-rankings">
     {{range $dashboard.Rankings}}
     {{$panel := .}}
