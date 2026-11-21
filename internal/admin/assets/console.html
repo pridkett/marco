@@ -62,7 +62,7 @@
   </div>
   {{with .Feedback.Error}}<p class="message error" role="alert">{{.}}</p>{{end}}
   {{with .Feedback.Message}}<p class="message success" role="status">{{.}}</p>{{end}}
-  {{if ne .Revision .EditRevision}}<p><a href="{{if eq .Path "/services/filter"}}{{serviceFilterURL .ServiceFilter.Target}}{{else}}{{.Path}}{{if .DeviceID}}?id={{urlquery .DeviceID}}{{end}}{{end}}">Reload current settings</a></p>{{end}}
+  {{if and (not .Feedback.ServiceReview) (or .Feedback.Conflict (and (not .Feedback.EditBase) (ne .Revision .EditRevision)))}}<p><a href="{{if eq .Path "/services/filter"}}{{serviceFilterURL .ServiceFilter.Target}}{{else}}{{.Path}}{{if .DeviceID}}?id={{urlquery .DeviceID}}{{end}}{{end}}">Reload current settings</a></p>{{end}}
   {{if eq .Path "/"}}{{template "overview" .}}{{end}}
   {{if eq .Path "/devices"}}{{template "devices" .}}{{end}}
   {{if eq .Path "/devices/edit"}}{{template "device-edit" .}}{{end}}
@@ -158,6 +158,7 @@
   {{if or .NewDevice .DeviceID}}
   <form class="stack" method="post" action="/devices/edit">
     {{template "revision-fields" .}}
+    {{template "edit-base" .EditBase}}
     {{if .NewDevice}}
     <input type="hidden" name="create" value="1">
     <label>Device ID <input name="id" value="{{.DeviceID}}" maxlength="256" required></label>
@@ -204,6 +205,7 @@
   <p id="local-help" class="muted">Manage zones, manual records, aliases and publication suppressions in one change. A suppression with both a name and an address matches only that pair.</p>
   <form action="/local-dns" method="post" class="stack">
     {{template "revision-fields" .}}
+    {{template "edit-base" .EditBase}}
     <label>Local DNS JSON <textarea name="settings" rows="16" spellcheck="false" required aria-describedby="local-help">{{.EditText}}</textarea></label>
     <button type="submit" class="button primary">Save local DNS</button>
   </form>
@@ -241,6 +243,7 @@
   <p id="policies-help" class="muted">Manage default and group policies, address assignments, manual rules and versioned service groups. Modes are <code>filtered</code>, <code>unfiltered</code>, <code>local-only</code> and <code>deny-all</code>.</p>
   <form action="/policies" method="post" class="stack">
     {{template "revision-fields" .}}
+    {{template "edit-base" .EditBase}}
     <label>Policy JSON <textarea name="settings" rows="16" spellcheck="false" required aria-describedby="policies-help">{{.EditText}}</textarea></label>
     <button type="submit" class="button primary">Save policies</button>
   </form>
@@ -266,6 +269,7 @@
         <form action="/blocklists/toggle" method="post">
           <input type="hidden" name="csrf" value="{{$.CSRF}}">
           <input type="hidden" name="revision" value="{{$.Revision}}">
+          {{template "edit-base" .EditBase}}
           <input type="hidden" name="id" value="{{.ID}}">
           <input type="hidden" name="enabled" value="{{if .Spec.Enabled}}false{{else}}true{{end}}">
           <button type="submit" class="button" aria-label="{{if .Spec.Enabled}}Disable{{else}}Enable{{end}} {{.ID}}">{{if .Spec.Enabled}}Disable{{else}}Enable{{end}}</button>
@@ -287,6 +291,7 @@
   <p id="subscription-help" class="muted">Use a named HTTPS <code>url</code> or a provisioned local <code>file</code>. An enabled subscription waits for a valid artifact before filtering. Group selections are managed in <a href="/policies">Policies</a>.</p>
   <form action="/blocklists" method="post" class="stack">
     {{template "revision-fields" .}}
+    {{template "edit-base" .EditBase}}
     <label>Subscriptions JSON <textarea name="settings" rows="12" spellcheck="false" required aria-describedby="subscription-help">{{.EditText}}</textarea></label>
     <button type="submit" class="button primary">Save subscriptions</button>
   </form>
@@ -380,6 +385,7 @@
   {{with .Feedback.Upstream}}<pre class="output" aria-label="Upstream test results">{{pretty .}}</pre>{{end}}
   <form action="/settings/upstreams" method="post" class="stack">
     {{template "revision-fields" .}}
+    {{template "edit-base" .EditBase}}
     <label>Pools JSON <textarea name="settings" rows="12" spellcheck="false" required>{{.PoolText}}</textarea></label>
     <button type="submit" class="button primary">Save upstreams</button>
   </form>
@@ -390,6 +396,7 @@
   <p><a class="button" href="/settings/export">Download portable settings</a></p>
   <form action="/settings/import" method="post" class="stack">
     {{template "revision-fields" .}}
+    {{template "edit-base" .ImportBase}}
     <label>Portable settings JSON <textarea name="settings" rows="8" spellcheck="false" required aria-describedby="import-help">{{.Feedback.SettingsImport}}</textarea></label>
     <button type="submit" class="button primary">Apply settings import</button>
   </form>
@@ -405,3 +412,5 @@
 <input type="hidden" name="csrf" value="{{.CSRF}}">
 <input type="hidden" name="revision" value="{{.EditRevision}}">
 {{end}}
+
+{{define "edit-base"}}{{with .}}<input type="hidden" name="edit-base" value="{{.}}">{{end}}{{end}}

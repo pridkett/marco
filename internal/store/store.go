@@ -19,7 +19,7 @@ import (
 var ErrBusy = errors.New("database write queue is full")
 var ErrStale = errors.New("configuration revision is stale")
 
-const schema = 2
+const schema = 3
 
 type Store struct {
 	db      *sql.DB
@@ -90,7 +90,16 @@ func (s *Store) migrate(ctx context.Context, initial config.Desired) error {
 		if version < 2 {
 			_, err := tx.ExecContext(ctx, `
 				CREATE TABLE blocking_pause (id INTEGER PRIMARY KEY CHECK(id=1), until_ns INTEGER);
-				PRAGMA user_version=2;
+			`)
+			if err != nil {
+				return err
+			}
+		}
+		if version < 3 {
+			_, err := tx.ExecContext(ctx, `
+				ALTER TABLE dns_state ADD COLUMN generation INTEGER NOT NULL DEFAULT 1;
+				UPDATE dns_state SET generation=revision;
+				PRAGMA user_version=3;
 			`)
 			return err
 		}
@@ -129,11 +138,15 @@ func (s *Store) Write(ctx context.Context, operation func(*sql.Tx) error) error 
 func load(ctx context.Context, db interface {
 	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
 	QueryRowContext(context.Context, string, ...any) *sql.Row
-}) (config.State, error) {
+}, hasGeneration bool) (config.State, error) {
 	var state config.State
 	var data []byte
-	var revision uint64
-	if err := db.QueryRowContext(ctx, "SELECT revision, data FROM dns_state WHERE id=1").Scan(&revision, &data); err != nil {
+	var revision, generation uint64
+	query := "SELECT revision, generation, data FROM dns_state WHERE id=1"
+	if !hasGeneration {
+		query = "SELECT revision, revision, data FROM dns_state WHERE id=1"
+	}
+	if err := db.QueryRowContext(ctx, query).Scan(&revision, &generation, &data); err != nil {
 		return state, err
 	}
 	if err := json.Unmarshal(data, &state); err != nil {
@@ -142,6 +155,7 @@ func load(ctx context.Context, db interface {
 	if state.Revision != revision {
 		return state, errors.New("database state and revision disagree")
 	}
+	state.Generation = generation
 	rows, err := db.QueryContext(ctx, "SELECT source, metadata, body FROM list_artifacts")
 	if err != nil {
 		return state, err
@@ -170,11 +184,12 @@ func (s *Store) Load(ctx context.Context) (config.State, error) {
 		return config.State{}, err
 	}
 	defer tx.Rollback()
-	return load(ctx, tx)
+	return load(ctx, tx, true)
 }
 
 func (s *Store) Save(ctx context.Context, previous, next config.State) error {
-	if next.Revision != previous.Revision+1 {
+	if next.Generation != previous.Generation+1 ||
+		(next.Revision != previous.Revision && next.Revision != previous.Revision+1) {
 		return errors.New("invalid revision increment")
 	}
 	audit, _ := ctx.Value(auditKey{}).(*ChangeAudit)
@@ -185,7 +200,8 @@ func (s *Store) Save(ctx context.Context, previous, next config.State) error {
 		return err
 	}
 	err = s.Write(ctx, func(tx *sql.Tx) error {
-		result, err := tx.ExecContext(ctx, "UPDATE dns_state SET revision=?, data=? WHERE id=1 AND revision=?", next.Revision, data, previous.Revision)
+		result, err := tx.ExecContext(ctx, "UPDATE dns_state SET generation=?, revision=?, data=? WHERE id=1 AND generation=?",
+			next.Generation, next.Revision, data, previous.Generation)
 		if err != nil {
 			return err
 		}
@@ -255,5 +271,9 @@ func Inspect(ctx context.Context, directory string) (config.State, error) {
 		return config.State{}, err
 	}
 	defer tx.Rollback()
-	return load(ctx, tx)
+	var version int
+	if err := tx.QueryRowContext(ctx, "PRAGMA user_version").Scan(&version); err != nil {
+		return config.State{}, err
+	}
+	return load(ctx, tx, version >= 3)
 }

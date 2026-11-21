@@ -141,7 +141,7 @@ func loadDeployment(flags *flag.FlagSet, file *string, args []string) (config.De
 func readState(ctx context.Context, d config.Deployment) (config.State, error) {
 	if _, err := os.Lstat(filepath.Join(d.DataDir, store.StateFile)); errors.Is(err, os.ErrNotExist) {
 		initial, err := d.ReadInitial()
-		return config.State{Revision: 1, Desired: initial}, err
+		return config.State{Revision: 1, Generation: 1, Desired: initial}, err
 	} else if err != nil {
 		return config.State{}, err
 	}

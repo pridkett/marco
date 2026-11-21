@@ -46,6 +46,7 @@ type page struct {
 	ServiceFilter              serviceFilterPage
 	AliasStatus                map[string]string
 	EditText, PoolText         string
+	EditBase, ImportBase       string
 	History                    []queryDay
 	HistoryClient, HistoryName string
 	HistoryOutcome             string
@@ -76,10 +77,11 @@ type deviceAddress struct {
 }
 
 type sourceRow struct {
-	ID    string
-	Spec  config.Subscription
-	State string
-	Info  config.Artifact
+	ID       string
+	Spec     config.Subscription
+	State    string
+	Info     config.Artifact
+	EditBase string
 }
 
 func (s *server) page(w http.ResponseWriter, r *http.Request, session auth.Session, path string, status int, f feedback) {
@@ -105,6 +107,7 @@ func (s *server) page(w http.ResponseWriter, r *http.Request, session auth.Sessi
 		p.Feedback.Message = fmt.Sprintf("Applied revision %d.", value)
 	}
 	now := time.Now()
+	var editOperation, editTarget string
 	switch path {
 	case "/":
 		s.dashboard(r.Context(), &p, r.URL.Query().Get("range"), state, now)
@@ -139,6 +142,7 @@ func (s *server) page(w http.ResponseWriter, r *http.Request, session auth.Sessi
 		if p.NewDevice {
 			p.Title = "Add manual device"
 		} else if observed || configured {
+			editOperation, editTarget = "edit-device", p.DeviceID
 			p.DeviceServiceFilterURL = serviceFilterURL("device:" + p.DeviceID)
 			p.stats(s.history)
 			if p.Stats.Enabled {
@@ -154,19 +158,23 @@ func (s *server) page(w http.ResponseWriter, r *http.Request, session auth.Sessi
 		}
 		p.EditText = pretty(settings)
 	case "/local-dns":
+		editOperation = "edit-local-dns"
 		p.EditText = pretty(localConfig(state.Desired))
 		p.AliasStatus = s.aliasStatus(state.Desired.Records)
 		if s.hooks.LocalIssues != nil {
 			p.LocalIssues = s.hooks.LocalIssues()
 		}
 	case "/policies":
+		editOperation = "edit-policies"
 		p.EditText = pretty(policyConfig(state.Desired))
 	case "/services":
 		status = s.servicePage(&p, r, state.Desired)
 	case "/services/filter":
 		p.Title = "Filter services"
 		status = s.serviceFilterPage(&p, r, state, status)
+		editOperation, editTarget = "edit-service-filter", p.ServiceFilter.Target
 	case "/blocklists":
+		editOperation = "edit-blocklists"
 		p.Subscriptions = sourceRows(state)
 		p.EditText = prettyObject(state.Desired.Subscriptions)
 		if s.hooks.Status != nil {
@@ -176,12 +184,23 @@ func (s *server) page(w http.ResponseWriter, r *http.Request, session auth.Sessi
 		p.stats(s.history)
 		s.queryHistory(&p, r, state, now)
 	case "/settings":
+		editOperation = "edit-upstreams"
+		p.ImportBase = scopedEditBase(state, "import-settings", "")
+		if f.Operation == "import-settings" {
+			p.ImportBase = f.EditBase
+		}
 		p.PoolText = prettyObject(state.Desired.Pools)
 		if f.Endpoints != "" {
 			p.PoolText = f.Endpoints
 		}
 		if s.hooks.Status != nil {
 			p.Status = s.hooks.Status()
+		}
+	}
+	if editOperation != "" {
+		p.EditBase = scopedEditBase(state, editOperation, editTarget)
+		if f.Operation == editOperation && !f.ServiceReview {
+			p.EditBase = f.EditBase
 		}
 	}
 	if f.Draft != "" {
@@ -209,16 +228,18 @@ func sourceRows(state config.State) []sourceRow {
 	for _, id := range slices.Sorted(maps.Keys(state.Desired.Subscriptions)) {
 		spec := state.Desired.Subscriptions[id]
 		info, loaded := state.Artifacts[id]
+		row := sourceRow{ID: id, Spec: spec, Info: info, EditBase: scopedEditBase(state, "toggle-list", id)}
 		switch {
 		case !spec.Enabled:
-			rows = append(rows, sourceRow{id, spec, "Disabled", info})
+			row.State = "Disabled"
 		case !loaded:
-			rows = append(rows, sourceRow{id, spec, "Waiting for valid list", info})
+			row.State = "Waiting for valid list"
 		case info.Source != spec:
-			rows = append(rows, sourceRow{id, spec, "Retaining last good list", info})
+			row.State = "Retaining last good list"
 		default:
-			rows = append(rows, sourceRow{id, spec, "Active", info})
+			row.State = "Active"
 		}
+		rows = append(rows, row)
 	}
 	return rows
 }
