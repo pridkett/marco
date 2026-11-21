@@ -2,10 +2,12 @@ package querylog
 
 import (
 	"context"
+	"errors"
 	"net/netip"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -140,6 +142,11 @@ func TestUpstreamBlocksAreCountedApartFromPolicy(t *testing.T) {
 		len(top.Blocked) != 1 || top.Blocked[0].Value != "filtered.test." {
 		t.Fatalf("rankings: %+v (%v)", top, err)
 	}
+	var indexes int
+	if err := l.db.QueryRowContext(t.Context(), `SELECT COUNT(*) FROM sqlite_master WHERE type = 'index'
+		AND name IN ('dns_queries_policy', 'dns_queries_upstream_blocked')`).Scan(&indexes); err != nil || indexes != 2 {
+		t.Fatalf("ranking indexes: %d (%v)", indexes, err)
+	}
 	for _, outcome := range []string{"upstream blocked", "Upstream-Blocked"} {
 		page, err := l.Search(t.Context(), Filter{Outcome: outcome})
 		if err != nil || len(page.Entries) != 3 {
@@ -158,6 +165,64 @@ func TestUpstreamBlocksAreCountedApartFromPolicy(t *testing.T) {
 	page, err = l.Search(t.Context(), Filter{Outcome: "blocked"})
 	if err != nil || len(page.Entries) != 1 || page.Entries[0].Name != "filtered.test." {
 		t.Fatalf("policy block search: %+v %v", page, err)
+	}
+}
+
+// A day of history can take seconds to rank on a Raspberry Pi. Rankings that
+// outlast the dashboard's deadline must finish in the background and be served
+// afterwards, rather than being cancelled and restarted on every page load.
+func TestSlowRankingsFinishAfterTheCallerGivesUp(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "slow.sqlite")
+	cfg := Settings{Enabled: true, Retention: time.Hour}
+	l, err := Open(path, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	l.Observe(logEvent(now.Add(-time.Minute), "slow.test."))
+	if err := l.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if l, err = Open(path, cfg); err != nil {
+		t.Fatal(err)
+	}
+	defer l.Close()
+	release := make(chan struct{})
+	var refreshes atomic.Int32
+	l.rankHook = func() {
+		refreshes.Add(1)
+		<-release
+	}
+	impatient := func(until time.Time) (Rankings, error) {
+		ctx, cancel := context.WithTimeout(t.Context(), 20*time.Millisecond)
+		defer cancel()
+		return l.TopQueries(ctx, until.Add(-15*time.Minute), until)
+	}
+
+	if _, err := impatient(now); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("cold rankings returned %v, want the caller's deadline", err)
+	}
+	if _, err := impatient(now); !errors.Is(err, context.DeadlineExceeded) || refreshes.Load() != 1 {
+		t.Fatalf("second caller did not join the running refresh: %v, %d refreshes", err, refreshes.Load())
+	}
+	close(release)
+	top, err := l.TopQueries(t.Context(), now.Add(-15*time.Minute), now)
+	if err != nil || len(top.Blocked) != 1 || top.Blocked[0].Value != "slow.test." {
+		t.Fatalf("finished refresh was not served: %+v %v", top, err)
+	}
+	if _, err := impatient(now.Add(30 * time.Second)); err != nil || refreshes.Load() != 1 {
+		t.Fatalf("fresh rankings were not reused: %v, %d refreshes", err, refreshes.Load())
+	}
+
+	release = make(chan struct{})
+	defer close(release)
+	stale, err := impatient(now.Add(2 * time.Minute))
+	if err != nil || len(stale.Blocked) != 1 || refreshes.Load() != 2 {
+		t.Fatalf("stale rankings were not served during a refresh: %+v %v, %d refreshes", stale, err, refreshes.Load())
+	}
+	// A 15-minute ranking from an hour ago no longer describes the window.
+	if _, err := impatient(now.Add(time.Hour)); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("hour-old rankings were served for a 15-minute window: %v", err)
 	}
 }
 

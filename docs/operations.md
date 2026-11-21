@@ -77,7 +77,7 @@ The device, Local DNS, policy, blocklist, upstream pool, and portable settings f
 
 ## DNS dashboard
 
-The dashboard defaults to 24 hours and also offers 15-minute and 1-hour views. When query history is enabled, Marco restores recent traffic counts from retained history at startup and displays client and domain rankings. Select a ranked client or domain to open the corresponding query log filter. When query history is disabled, the chart and summary counts cover only the current run.
+The dashboard defaults to 24 hours and also offers 15-minute and 1-hour views. When query history is enabled, Marco restores recent traffic counts from retained history at startup and displays client and domain rankings. Select a ranked client or domain to open the corresponding query log filter. Rankings are computed in the background and reused for up to a minute, so they can trail the counts slightly. On small devices such as a Raspberry Pi, ranking a full day of history takes a few seconds. Right after Marco starts, the dashboard may briefly show **Query rankings are temporarily unavailable** until the first ranking finishes. Refresh the page after a few seconds. When query history is disabled, the chart and summary counts cover only the current run.
 
 ### Upstream blocks
 
