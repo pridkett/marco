@@ -68,6 +68,8 @@ For local-account polling, add this section to `marco.json` and supply `UNIFI_PA
 
 Marco polls clients and adopted infrastructure immediately and every 60 seconds by default. For the official API, use `api-key` and set `"apiKey": {"env": "UNIFI_API_KEY"}` with the site ID.
 
+Marco does not publish a client-reported name of `wpad` or `isatap`. Clients look up these names to discover proxy and tunnel settings, so any device could otherwise redirect their traffic by reporting one. To publish one of these names on purpose, set it as the device's name in **Devices → Edit**.
+
 When a local-account poll supplies a client fingerprint ID, the Devices page loads the corresponding artwork from Ubiquiti's `static.ui.com` CDN. The image request identifies the device model by its fingerprint ID and omits the page URL. Clients polled through the official Network integration API have no documented fingerprint field.
 
 ### Controller address at startup

@@ -189,3 +189,36 @@ func TestExplicitInterfaceLinks(t *testing.T) {
 		t.Fatal("accepted a cycle of explicit interface links")
 	}
 }
+
+func TestReportedProxyDiscoveryNamesAreNotPublished(t *testing.T) {
+	s := config.State{Desired: config.Defaults()}
+	rogue := fixtureRow("02:aa:00:00:00:31", "WPAD", "192.0.2.31")
+	tunnel := fixtureRow("02:aa:00:00:00:32", "isatap.example", "192.0.2.32")
+	rogueID := identityKey("fixture-controller", "default", rogue.MAC, "")
+	tunnelID := identityKey("fixture-controller", "default", tunnel.MAC, "")
+	poll(t, &s, 0, rogue, tunnel)
+	if got := s.Devices[rogueID].Canonical; got != "" {
+		t.Fatalf("reported wpad name was published as %q", got)
+	}
+	if got := s.Devices[tunnelID].Canonical; got != "" {
+		t.Fatalf("reported isatap name was published as %q", got)
+	}
+
+	// A name learned before the check is dropped unless an operator assigned it.
+	legacy := s.Devices[rogueID]
+	legacy.Canonical = "wpad"
+	s.Devices[rogueID] = legacy
+	if err := Prepare(&s); err != nil {
+		t.Fatal(err)
+	}
+	if got := s.Devices[rogueID].Canonical; got != "" {
+		t.Fatalf("stored wpad name was kept as %q", got)
+	}
+	s.Desired.Devices = map[string]config.DeviceSettings{rogueID: {Name: "wpad"}}
+	if err := Prepare(&s); err != nil {
+		t.Fatal(err)
+	}
+	if got := s.Devices[rogueID].Canonical; got != "wpad" {
+		t.Fatalf("operator-assigned wpad name was not honored: %q", got)
+	}
+}

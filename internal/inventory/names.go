@@ -95,6 +95,11 @@ func Prepare(state *config.State) error {
 			device.Canonical = ""
 			state.Devices[id] = device
 		}
+		if protectedLabel(device.Canonical) && state.Desired.Devices[id].Name == "" {
+			// Drop a protected name learned before this check existed.
+			device.Canonical = ""
+			state.Devices[id] = device
+		}
 		if device.Canonical == "" {
 			continue
 		}
@@ -139,7 +144,7 @@ func Prepare(state *config.State) error {
 		if label == "" {
 			label = Label(device.Hostname)
 		}
-		if label == "" {
+		if label == "" || protectedLabel(label) {
 			continue
 		}
 		label = allocate(label, id, reserved)
@@ -149,6 +154,19 @@ func Prepare(state *config.State) error {
 		state.Devices[id] = device
 	}
 	return nil
+}
+
+// protectedLabel reports whether a device-reported name must not be published
+// automatically. Clients resolve these labels under their search domains to
+// discover proxy and tunnel settings, so a device that reports one could
+// redirect other clients' traffic. Windows DNS Server blocks the same names by
+// default. An operator can still assign one explicitly as a device name.
+func protectedLabel(label string) bool {
+	switch label {
+	case "wpad", "isatap":
+		return true
+	}
+	return false
 }
 
 func allocate(label, id string, reserved map[string]string) string {
