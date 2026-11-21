@@ -62,8 +62,9 @@
     <option value="">All categories</option>
     {{range .Categories}}<option{{if eq . $.Services.Category}} selected{{end}}>{{.}}</option>{{end}}
   </select></label>
-  <button type="submit" class="button primary">Filter services</button>
+  <button type="submit" class="button">Search catalog</button>
   {{if or .Search .Category}}<a class="button" href="/services">Clear filters</a>{{end}}
+  <a class="button primary service-filter-link" href="/services/filter">Filter services</a>
 </form>
 {{if .Cards}}
 <p class="muted service-count">{{len .Cards}} {{if eq (len .Cards) 1}}service{{else}}services{{end}}</p>

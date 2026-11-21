@@ -6,11 +6,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/netip"
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/miekg/dns"
 	"github.com/pridkett/marco/internal/auth"
@@ -55,7 +57,12 @@ type feedback struct {
 	Endpoints      string
 	SettingsImport string
 	StaleBase      *uint64
+	ServiceEdit    *serviceFilterEdit
 }
+
+type settingsInputError string
+
+func (err settingsInputError) Error() string { return string(err) }
 
 func (s *server) edit(w http.ResponseWriter, r *http.Request, session auth.Session, path, operation string) {
 	if err := parseForm(w, r, 4<<20); err != nil {
@@ -80,6 +87,9 @@ func (s *server) edit(w http.ResponseWriter, r *http.Request, session auth.Sessi
 	if operation == "import-settings" {
 		draft.SettingsImport, draft.Draft = draft.Draft, ""
 	}
+	if operation == "edit-service-filter" {
+		draft.ServiceEdit = &serviceFilterEdit{form.Get("target"), form.Get("mode"), form["service"]}
+	}
 	base, err := strconv.ParseUint(form.Get("revision"), 10, 64)
 	status := http.StatusBadRequest
 	current := s.revision()
@@ -94,7 +104,11 @@ func (s *server) edit(w http.ResponseWriter, r *http.Request, session auth.Sessi
 		err = errors.New("Settings are currently read-only.")
 	} else {
 		var change func(*config.State) error
-		change, err = changeFor(operation, form.Get)
+		if draft.ServiceEdit != nil {
+			change = s.changeServiceFilter(*draft.ServiceEdit)
+		} else {
+			change, err = changeFor(operation, form.Get)
+		}
 		if err == nil {
 			ctx, changeAudit := store.WithChangeAudit(r.Context(), session.Account, operation)
 			audit = changeAudit
@@ -104,6 +118,12 @@ func (s *server) edit(w http.ResponseWriter, r *http.Request, session auth.Sessi
 				status, err = http.StatusServiceUnavailable, errors.New("Marco is busy. Try the edit again.")
 			case err != nil && (errors.Is(err, store.ErrStale) || current != base):
 				status, err = http.StatusConflict, conflict(base, current)
+			case err != nil && (draft.ServiceEdit != nil || operation == "create-group"):
+				var invalid settingsInputError
+				if !errors.As(err, &invalid) {
+					slog.Warn("could not update admin settings", "operation", operation, "revision", current, "error", err)
+					status, err = http.StatusInternalServerError, errors.New("Marco could not save the settings. Check the server log.")
+				}
 			}
 		}
 	}
@@ -121,11 +141,17 @@ func (s *server) edit(w http.ResponseWriter, r *http.Request, session auth.Sessi
 		return
 	}
 	if !audit.Saved() && !s.audit(r, session.Account, operation, "success", current) {
-		draft = feedback{Error: "The change applied, but its audit record could not be saved."}
+		draft = feedback{Error: "The change applied, but its audit record could not be saved.", ServiceEdit: draft.ServiceEdit}
 		s.page(w, r, session, path, http.StatusOK, draft)
 		return
 	}
 	w.Header().Set("X-Marco-Revision", strconv.FormatUint(current, 10))
+	if draft.ServiceEdit != nil {
+		query := editQuery("", current)
+		query.Set("target", draft.ServiceEdit.Target)
+		http.Redirect(w, r, path+"?"+query.Encode(), http.StatusSeeOther)
+		return
+	}
 	http.Redirect(w, r, redirectPath(path, draft.DeviceID, current), http.StatusSeeOther)
 }
 
@@ -203,6 +229,21 @@ func changeFor(operation string, get func(string) string) (func(*config.State) e
 					}
 				}
 			}
+			return nil
+		}, nil
+	case "create-group":
+		name := strings.TrimSpace(get("group-name"))
+		if name == "" || len([]rune(name)) > 64 || strings.ContainsFunc(name, unicode.IsControl) {
+			return nil, errors.New("Enter a group name of up to 64 characters on one line.")
+		}
+		return func(s *config.State) error {
+			if _, exists := s.Desired.Groups[name]; exists {
+				return settingsInputError("A group with that name already exists.")
+			}
+			if s.Desired.Groups == nil {
+				s.Desired.Groups = make(map[string]config.Policy)
+			}
+			s.Desired.Groups[name] = config.Policy{}
 			return nil
 		}, nil
 	case "add-default-lists":

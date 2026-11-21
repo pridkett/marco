@@ -110,16 +110,18 @@ func (s *server) servicePage(p *page, r *http.Request, desired config.Desired) i
 		result.Cards = append(result.Cards, card)
 	}
 	result.Categories = slices.Sorted(maps.Keys(categories))
-	slices.SortFunc(result.Cards, func(left, right serviceCard) int {
-		if order := strings.Compare(strings.ToLower(left.Name), strings.ToLower(right.Name)); order != 0 {
-			return order
-		}
-		return strings.Compare(left.ID, right.ID)
-	})
+	slices.SortFunc(result.Cards, compareServices)
 	for i := range result.Cards {
 		result.Cards[i].URL = result.catalogURL(result.Cards[i].ID)
 	}
 	return http.StatusOK
+}
+
+func compareServices(left, right serviceCard) int {
+	if order := strings.Compare(strings.ToLower(left.Name), strings.ToLower(right.Name)); order != 0 {
+		return order
+	}
+	return strings.Compare(left.ID, right.ID)
 }
 
 func (s *server) serviceCards(desired config.Desired) map[string]serviceCard {

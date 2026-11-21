@@ -1,0 +1,102 @@
+{{define "service-filter"}}
+<p><a href="/services">Back to the service catalog</a></p>
+{{with .ServiceFilter}}
+<section class="panel section" aria-labelledby="service-target-heading">
+  <h2 id="service-target-heading">Choose a group or device</h2>
+  {{if or .Groups .Devices}}
+  <form class="toolbar service-target-picker" action="/services/filter" method="get">
+    <label>Apply service blocks to
+      <select name="target" required>
+        <option value="">Select a group or device</option>
+        {{if .Groups}}<optgroup label="Groups">
+          {{range .Groups}}<option value="{{.Value}}"{{if eq .Value $.ServiceFilter.Target}} selected{{end}}>{{.Label}}</option>{{end}}
+        </optgroup>{{end}}
+        {{if .Devices}}<optgroup label="Devices">
+          {{range .Devices}}<option value="{{.Value}}"{{if eq .Value $.ServiceFilter.Target}} selected{{end}}>{{.Label}}</option>{{end}}
+        </optgroup>{{end}}
+      </select>
+    </label>
+    <button type="submit" class="button">Open policy</button>
+    <a href="/policies">Manage groups</a>
+  </form>
+  {{else}}
+  <p><a href="/policies">Create a group</a> or <a href="/devices">add a device</a> to start filtering services.</p>
+  {{end}}
+</section>
+{{if .Name}}
+<form method="post" action="/services/filter" data-service-editor>
+  {{template "revision-fields" $}}
+  <input type="hidden" name="target" value="{{.Target}}">
+  <section class="panel section service-policy" aria-labelledby="service-policy-heading">
+    <header class="service-policy-header">
+      <div>
+        <span class="secondary">{{if .Device}}Device{{else}}Group{{end}}</span>
+        <h2 id="service-policy-heading">{{.Name}}</h2>
+        {{if .Device}}<p class="muted">{{if .Group}}Assigned to {{.Group}}.{{else}}No group assigned.{{end}}</p>{{end}}
+      </div>
+      {{if .Device}}<a href="/devices/edit?id={{urlquery .Device}}">Edit device</a>{{else}}<a href="/devices">Manage devices</a>{{end}}
+    </header>
+    {{if ne .Mode "filtered"}}
+    <p class="message service-policy-note">The configured DNS mode is <strong>{{.Mode}}</strong>. Service blocks apply during filtered DNS resolution.</p>
+    {{end}}
+    <fieldset class="service-modes">
+      <legend>Service selection</legend>
+      <label class="service-mode">
+        <input type="radio" name="mode" value="inherit"{{if not .Custom}} checked{{end}}>
+        <span><strong>Inherit service blocks</strong>
+          <small>Follow {{if .Group}}the {{.Group}} group{{else}}the default policy{{end}}. {{.Inherited}} blocked.</small>
+        </span>
+      </label>
+      <label class="service-mode">
+        <input type="radio" name="mode" value="custom"{{if .Custom}} checked{{end}}>
+        <span><strong>Customize service blocks</strong>
+          <small>Choose the full list for this {{if .Device}}device{{else}}group{{end}}. An empty list clears inherited blocks.</small>
+        </span>
+      </label>
+    </fieldset>
+  </section>
+  {{if .Cards}}
+  <div class="toolbar panel section service-filters" data-service-search hidden>
+    <label class="service-search">Search services <input type="search" data-search placeholder="Name or category"></label>
+    <label>Category <select data-category>
+      <option value="">All categories</option>
+      {{range .Categories}}<option>{{.}}</option>{{end}}
+    </select></label>
+    <label class="service-toggle service-blocked-only"><input type="checkbox" data-blocked-only> Blocked only</label>
+  </div>
+  <fieldset class="service-choices" data-service-choices>
+    <legend class="visually-hidden">Services to block</legend>
+    <ul class="service-grid service-choice-grid" role="list">
+      {{range $i, $card := .Cards}}
+      <li class="panel service-choice" data-service data-search-text="{{.Name}} {{.ID}} {{.Category}}" data-category="{{.Category}}" data-inherited="{{.Inherited}}">
+        <div class="service-choice-info">
+          {{template "service-image" .}}
+          <div class="service-card-text">
+            <strong id="service-name-{{$i}}">{{.Name}}</strong>
+            <span class="secondary">{{.Category}}</span>
+          </div>
+        </div>
+        <label class="service-toggle">
+          <input type="checkbox" name="service" value="{{.ID}}" aria-labelledby="block-{{$i}} service-name-{{$i}}"{{if .Selected}} checked{{end}}>
+          <span id="block-{{$i}}">Block</span>
+        </label>
+      </li>
+      {{end}}
+    </ul>
+  </fieldset>
+  <p class="panel empty" data-no-services hidden>No services match these filters.</p>
+  {{else}}
+  <p class="panel empty">There are no services to select. <a href="/policies">Manage custom services in Policies.</a></p>
+  {{end}}
+  <div class="panel service-save">
+    <p aria-live="polite" data-service-summary><strong>{{.Selected}}</strong> of {{len .Cards}} services blocked{{if not .Custom}} by inheritance{{end}}.</p>
+    <div class="toolbar">
+      <a class="button" href="{{serviceFilterURL .Target}}">Reset edits</a>
+      <button type="submit" class="button primary">Save service blocks</button>
+    </div>
+  </div>
+</form>
+<script src="/assets/service-filter.js" defer></script>
+{{end}}
+{{end}}
+{{end}}

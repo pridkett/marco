@@ -91,7 +91,11 @@ Use `caFile` for a private CA. A manual `A` or `AAAA` record also works when the
 
 Marco’s default catalog is stored in `catalog/services.json` alongside its source and license information. The Linux packages include this file next to the binary. Marco looks for the catalog next to `marco.json`, next to the executable, and under the working directory. Set `serviceCatalog` in `marco.json` to choose a file explicitly. Restart Marco after updating the resource. Keep the same catalog alongside exported settings when moving a configuration that selects its service IDs.
 
-Open **Services** in the console to filter by category or search by name. Each detail page shows the original rules, their hostname scope and exceptions, and a hostname test that uses the same service matcher as DNS. Marco serves the logos locally from the catalog. In **Policies**, use the displayed ID in the `services` list for a filtered policy, for example `"services": ["youtube", "discord"]`. Services are available for selection by default. An entry in the desired configuration’s `services` map can define a custom service or override the catalog entry with the same ID.
+Open **Services → Filter services** to select a group or an individual device. **Customize service blocks** saves the full list for that policy. Search by name, choose a category, or select **Blocked only** to review the list before saving. Clearing every checkbox saves an empty list. Choose **Inherit service blocks** to follow the parent policy again. Groups inherit the default policy, and devices can inherit their group's list. Service blocks apply during filtered DNS resolution. Use **Policies → Test a DNS decision** to check the result for a particular client address, including address assignments and manual rules.
+
+To manage a household group, create it under **Policies → Client groups**, choose its blocked services, and assign each device under **Devices → Edit → Device group**. Marco identifies devices through fresh inventory observations or address assignments that name the device. For a manually configured device without observations, use a named address assignment in **Policies** to bind the DNS client address.
+
+The service catalog still supports browsing by category or name. Detail pages show hostname rules and exceptions, with a test that uses the same service matcher as DNS. An entry in the desired configuration’s `services` map can define a custom service or override the catalog entry with the same ID. Both catalog and custom services appear in the editor.
 
 ## Offline migration
 

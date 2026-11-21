@@ -52,7 +52,7 @@
     </form>
   </div>
   <nav class="shell navigation" aria-label="Main navigation">
-    {{range .Nav}}<a href="{{.URL}}" {{if or (eq $.Path .URL) (and (eq $.Path "/devices/edit") (eq .URL "/devices"))}}aria-current="page"{{end}}>{{.Label}}</a>{{end}}
+    {{range .Nav}}<a href="{{.URL}}" {{if or (eq $.Path .URL) (and (eq $.Path "/devices/edit") (eq .URL "/devices")) (and (eq $.Path "/services/filter") (eq .URL "/services"))}}aria-current="page"{{end}}>{{.Label}}</a>{{end}}
   </nav>
 </header>
 <main id="content" class="shell main-content" tabindex="-1">
@@ -62,13 +62,14 @@
   </div>
   {{with .Feedback.Error}}<p class="message error" role="alert">{{.}}</p>{{end}}
   {{with .Feedback.Message}}<p class="message success" role="status">{{.}}</p>{{end}}
-  {{if ne .Revision .EditRevision}}<p><a href="{{.Path}}{{if .DeviceID}}?id={{urlquery .DeviceID}}{{end}}">Reload current settings</a></p>{{end}}
+  {{if ne .Revision .EditRevision}}<p><a href="{{if eq .Path "/services/filter"}}{{serviceFilterURL .ServiceFilter.Target}}{{else}}{{.Path}}{{if .DeviceID}}?id={{urlquery .DeviceID}}{{end}}{{end}}">Reload current settings</a></p>{{end}}
   {{if eq .Path "/"}}{{template "overview" .}}{{end}}
   {{if eq .Path "/devices"}}{{template "devices" .}}{{end}}
   {{if eq .Path "/devices/edit"}}{{template "device-edit" .}}{{end}}
   {{if eq .Path "/local-dns"}}{{template "local" .}}{{end}}
   {{if eq .Path "/policies"}}{{template "policies" .}}{{end}}
   {{if eq .Path "/services"}}{{template "services" .}}{{end}}
+  {{if eq .Path "/services/filter"}}{{template "service-filter" .}}{{end}}
   {{if eq .Path "/blocklists"}}{{template "blocklists" .}}{{end}}
   {{if eq .Path "/query-log"}}{{template "history" .}}{{end}}
   {{if eq .Path "/settings"}}{{template "settings" .}}{{end}}
@@ -149,7 +150,10 @@
 <section class="panel section narrow">
   <div class="toolbar spread">
     <a href="/devices">Back to devices</a>
-    {{with .DeviceHistoryURL}}<a class="button" href="{{.}}">View query log</a>{{end}}
+    <div class="toolbar">
+      {{with .DeviceServiceFilterURL}}<a class="button" href="{{.}}">Filter services</a>{{end}}
+      {{with .DeviceHistoryURL}}<a class="button" href="{{.}}">View query log</a>{{end}}
+    </div>
   </div>
   {{if or .NewDevice .DeviceID}}
   <form class="stack" method="post" action="/devices/edit">
@@ -212,8 +216,14 @@
     <h2>Client groups</h2>
     <dl class="facts">
       <div><dt>Default</dt><dd>{{.Desired.Default.Mode}}</dd></div>
-      {{range $name, $group := .Desired.Groups}}<div><dt>{{$name}}</dt><dd>{{if $group.Mode}}{{$group.Mode}}{{else}}Inherited{{end}}</dd></div>{{end}}
+      {{range $name, $group := .Desired.Groups}}<div><dt><a href="{{serviceFilterURL (print "group:" $name)}}">{{$name}}</a></dt><dd>{{if $group.Mode}}{{$group.Mode}}{{else}}Inherited{{end}}</dd></div>{{end}}
     </dl>
+    <form action="/policies/groups" method="post" class="toolbar">
+      {{template "revision-fields" .}}
+      <label>Group name <input name="group-name" maxlength="64" required></label>
+      <button type="submit" class="button primary">Create group</button>
+    </form>
+    <hr>
     <form action="/policies/defaults" method="post">
       {{template "revision-fields" .}}
       <button type="submit" class="button">Add default groups</button>
@@ -221,6 +231,7 @@
   </section>
   <section class="panel section">
     <h2>Blocked services</h2>
+    <p><a class="button primary" href="/services/filter">Filter services</a></p>
     <p><a href="/services">Browse the service catalog and test hostnames</a></p>
   </section>
 </div>
