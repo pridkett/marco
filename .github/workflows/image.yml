@@ -45,11 +45,16 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-      # Proves each runtime image starts and finds its catalog. QEMU runs the
-      # non-native ones; this is a smoke test, not the build.
+      - name: Smoke-test the pull request image
+        if: github.event_name == 'pull_request'
+        run: |
+          docker buildx build --platform linux/amd64 --load \
+            --build-arg "MARCO_BUILD_VERSION=$GITHUB_SHA" -t marco:pr-test .
+          sh scripts/smoke-test-image.sh marco:pr-test linux/amd64
+      # QEMU runs the non-native images for this smoke test.
       - name: Smoke-test every platform
         if: github.event_name != 'pull_request'
         run: |
           for p in linux/amd64 linux/arm64 linux/arm/v7; do
-            docker run --rm --platform "$p" "ghcr.io/${{ github.repository }}:sha-${GITHUB_SHA::7}" version
+            sh scripts/smoke-test-image.sh "ghcr.io/${{ github.repository }}:sha-${GITHUB_SHA::7}" "$p"
           done
