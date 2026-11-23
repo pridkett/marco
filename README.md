@@ -1,5 +1,7 @@
 # Marco
 
+[Project website and quickstart](https://pridkett.github.io/marco/)
+
 Marco is a LAN DNS forwarder and local name service. It serves UDP and TCP, applies client-specific filtering and DNS policies, and builds local records from manual settings and UniFi inventory. Upstreams support verified DNS-over-TLS, DNS-over-HTTPS, DNS-over-QUIC, and explicitly configured plain DNS over UDP or TCP.
 
 Each instance runs as one Go binary with an embedded admin console and its own SQLite databases. The console supports an Argon2id password account and PocketID-compatible OIDC.
