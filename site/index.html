@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Marco is a lightweight, self-hosted LAN DNS forwarder with local names, per-device filtering, encrypted upstreams, and UniFi discovery.">
+  <meta name="theme-color" content="#f7f7ef">
+  <title>Marco — Find your way on your LAN</title>
+  <link rel="icon" href="assets/marco.png" type="image/png">
+  <link rel="stylesheet" href="assets/site.css">
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+  <header class="site-header">
+    <div class="wrap header-inner">
+      <a class="brand" href="./" aria-current="page"><span class="brand-mark" aria-hidden="true"></span>Marco</a>
+      <nav aria-label="Main navigation">
+        <a href="features/">Features</a>
+        <a href="start/">Quickstart</a>
+        <a href="https://github.com/pridkett/marco">GitHub</a>
+      </nav>
+    </div>
+  </header>
+  <main id="main">
+    <section class="wrap hero">
+      <div class="hero-copy">
+        <p class="eyebrow"><span class="signal-dot" aria-hidden="true"></span>Self-hosted LAN DNS</p>
+        <h1>Find your way <em>on your LAN.</em></h1>
+        <p class="lede">Give your devices names, block unwanted domains, and choose where queries go. Marco is a DNS forwarder and local name service in one small Go binary.</p>
+        <div class="actions">
+          <a class="button primary" href="start/">Get started</a>
+          <a class="button secondary" href="features/">Explore features</a>
+        </div>
+      </div>
+      <figure class="hero-visual">
+        <div class="radar-stage">
+          <div class="radar" aria-hidden="true"></div>
+          <a class="app-window" href="assets/dashboard.webp">
+            <div class="window-bar"><span class="window-dots" aria-hidden="true"></span>Dashboard<span class="window-spacer" aria-hidden="true"></span></div>
+            <img src="assets/dashboard.webp" width="1280" height="745" alt="Open full-size Marco dashboard screenshot showing query totals, policy and upstream blocks, and a DNS traffic chart.">
+          </a>
+        </div>
+        <figcaption>Marco’s embedded console with demo traffic.</figcaption>
+      </figure>
+    </section>
+    <div class="spec-strip">
+      <dl class="wrap specs">
+        <div><dt>Runtime</dt><dd>Single Go binary</dd></div>
+        <div><dt>Storage</dt><dd>Embedded SQLite</dd></div>
+        <div><dt>Encrypted upstreams</dt><dd>DoT · DoH · DoQ</dd></div>
+        <div><dt>Linux builds</dt><dd>amd64 · arm64 · ARMv7</dd></div>
+      </dl>
+    </div>
+    <section class="wrap highlights" aria-labelledby="highlights-title">
+      <div class="section-heading">
+        <h2 id="highlights-title">Make DNS yours.</h2>
+      </div>
+      <div class="cards">
+        <article class="card">
+          <span class="card-icon icon-local" aria-hidden="true"><i></i></span>
+          <h3>Find devices by name</h3>
+          <p>Turn UniFi inventory into local DNS names. Give your NAS or lab your own names with manual records and private zones.</p>
+          <a href="features/#local-dns">Local DNS and UniFi</a>
+        </article>
+        <article class="card">
+          <span class="card-icon icon-filter" aria-hidden="true"><i></i></span>
+          <h3>Filter by device</h3>
+          <p>Apply blocklists and service rules to a device or group. Test a policy against a client and hostname before relying on it.</p>
+          <a href="features/#filtering">Client policies</a>
+        </article>
+        <article class="card">
+          <span class="card-icon icon-route" aria-hidden="true"><i></i></span>
+          <h3>Route queries your way</h3>
+          <p>Use verified encrypted upstreams for public DNS and send specific suffixes to a dedicated resolver, including Tailscale MagicDNS.</p>
+          <a href="features/#upstreams">Upstreams and routing</a>
+        </article>
+      </div>
+    </section>
+    <section class="origin-band">
+      <div class="wrap origin">
+        <div>
+          <h2>Marco! <em>Polo.</em></h2>
+          <p>In the kids’ game, you call out “Marco!” and follow the reply to figure out where to go. On your LAN, you ask for a name and Marco helps you find the address.</p>
+        </div>
+        <figure class="terminal origin-terminal">
+          <figcaption>First lookup</figcaption>
+          <pre><code><span class="prompt">$</span> dig @127.0.0.1 -p 1053 welcome.home.arpa +short
+<span class="answer">192.0.2.10</span></code></pre>
+        </figure>
+      </div>
+    </section>
+    <div class="wrap end-cap">
+      <div>
+        <h2>Give Marco a call.</h2>
+        <p>Try your first lookup on loopback, then bring it to your LAN.</p>
+      </div>
+      <a class="button primary" href="start/">Open the quickstart</a>
+    </div>
+  </main>
+  <footer class="site-footer">
+    <div class="wrap footer-inner">
+      <a class="brand" href="./"><span class="brand-mark" aria-hidden="true"></span>Marco</a>
+      <nav aria-label="Footer navigation">
+        <a href="https://github.com/pridkett/marco/blob/main/docs/operations.md">Operations guide</a>
+        <a href="https://github.com/pridkett/marco">Source on GitHub</a>
+      </nav>
+    </div>
+  </footer>
+</body>
+</html>

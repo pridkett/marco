@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Build Marco, launch the example instance, and make your first DNS lookup. Then put Marco on your LAN.">
+  <meta name="theme-color" content="#f7f7ef">
+  <title>Quickstart — Marco</title>
+  <link rel="icon" href="../assets/marco.png" type="image/png">
+  <link rel="stylesheet" href="../assets/site.css">
+  <script src="../assets/copy.js" defer></script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+  <header class="site-header">
+    <div class="wrap header-inner">
+      <a class="brand" href="../"><span class="brand-mark" aria-hidden="true"></span>Marco</a>
+      <nav aria-label="Main navigation">
+        <a href="../features/">Features</a>
+        <a href="./" aria-current="page">Quickstart</a>
+        <a href="https://github.com/pridkett/marco">GitHub</a>
+      </nav>
+    </div>
+  </header>
+  <main id="main">
+    <header class="wrap sub-hero">
+      <p class="eyebrow"><span class="signal-dot" aria-hidden="true"></span>Quickstart</p>
+      <h1>Make your first <em>DNS lookup.</em></h1>
+      <p class="lede">Try Marco locally before pointing any devices at it. You’ll need Git, Go 1.25 or newer, OpenSSL, and <code>dig</code>.</p>
+    </header>
+    <div class="wrap guide">
+      <nav class="guide-nav" aria-label="Setup steps">
+        <a href="#build">Build and configure</a>
+        <a href="#run">Start Marco</a>
+        <a href="#check">Ask for a name</a>
+        <a href="#lan">Move to your LAN</a>
+      </nav>
+      <div class="steps">
+        <section class="step" id="build">
+          <h2>1. Build and configure</h2>
+          <p>Build from source and make a private demo directory. The example binds DNS to <code>127.0.0.1:1053</code> and the HTTPS console to <code>localhost:8443</code>.</p>
+          <figure class="terminal">
+            <figcaption>Shell</figcaption>
+            <pre><code class="copyable">git clone https://github.com/pridkett/marco.git
+cd marco
+umask 077
+mkdir demo
+CGO_ENABLED=0 go build -trimpath -o demo/marco ./cmd/marco
+cp examples/marco.json examples/marco.desired.json demo/
+cp -R examples/lists catalog demo/
+cd demo</code></pre>
+          </figure>
+          <p>For internet lookups, replace <code>pools.resolver[0].address</code> and <code>serverName</code> in <code>marco.desired.json</code> with your DNS-over-TLS provider’s IP address and verification hostname. The example’s placeholder works for the local lookup below. Marco seeds a new data directory from this file on the first run.</p>
+        </section>
+        <section class="step" id="run">
+          <h2>2. Start Marco</h2>
+          <p>Generate a temporary certificate for the demo console, then validate the config. Use a certificate valid for your admin hostname when you deploy on the LAN.</p>
+          <figure class="terminal">
+            <figcaption>Shell</figcaption>
+            <pre><code class="copyable">openssl req -x509 -newkey rsa:2048 -nodes -days 30 \
+  -subj /CN=localhost -addext subjectAltName=DNS:localhost \
+  -keyout admin-key.pem -out admin-cert.pem
+./marco validate --config marco.json</code></pre>
+          </figure>
+          <p>Run this line on its own. Choose a password when prompted and use it to sign in as <code>admin</code>. The command passes the generated hash directly to Marco.</p>
+          <figure class="terminal">
+            <figcaption>Shell</figcaption>
+            <pre><code class="copyable">credential=$(./marco password) &amp;&amp; \
+  MARCO_ADMIN_PASSWORD="$credential" ./marco run --config marco.json</code></pre>
+          </figure>
+        </section>
+        <section class="step" id="check">
+          <h2>3. Ask for a name</h2>
+          <p>Leave Marco running and run this in a second terminal. The example record should return <code>192.0.2.10</code>.</p>
+          <figure class="terminal">
+            <figcaption>Shell</figcaption>
+            <pre><code class="copyable">dig @127.0.0.1 -p 1053 welcome.home.arpa +short</code></pre>
+          </figure>
+          <p>Trust the demo certificate in your browser and open <code>https://localhost:8443</code> to see the query in the console.</p>
+        </section>
+        <section class="step" id="lan">
+          <h2>4. Move to your LAN</h2>
+          <p>Set <code>dns.listen</code> to your LAN address and port 53, and set <code>dns.allow</code> to the client CIDRs Marco should serve. Verify that a device on the LAN can query it before updating your DHCP or router DNS settings. On Linux, give the service permission to bind port 53.</p>
+          <div class="guide-links">
+            <a href="https://github.com/pridkett/marco/blob/main/docs/operations.md">Read the operations guide</a>
+            <a href="https://github.com/pridkett/marco#build">Package for Linux or Raspberry Pi</a>
+            <a href="https://github.com/pridkett/marco/pkgs/container/marco">See container images</a>
+            <a href="https://github.com/pridkett/marco/blob/main/docs/operations.md#offline-migration">Import AdGuard Home settings</a>
+          </div>
+        </section>
+      </div>
+    </div>
+  </main>
+  <footer class="site-footer">
+    <div class="wrap footer-inner">
+      <a class="brand" href="../"><span class="brand-mark" aria-hidden="true"></span>Marco</a>
+      <nav aria-label="Footer navigation">
+        <a href="https://github.com/pridkett/marco/blob/main/docs/operations.md">Operations guide</a>
+        <a href="https://github.com/pridkett/marco">Source on GitHub</a>
+      </nav>
+    </div>
+  </footer>
+</body>
+</html>
